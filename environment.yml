@@ -1,0 +1,7 @@
+name: flame-train
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  # Add dependencies here as commands are implemented.

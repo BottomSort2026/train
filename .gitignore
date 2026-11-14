@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Local environment
+.env
+CLAUDE.local.md
+
+# Data and artifacts: never commit contents, only keep the folder structure
+data/**
+!data/**/
+!data/**/.gitkeep
+artifacts/**
+!artifacts/**/
+!artifacts/**/.gitkeep
