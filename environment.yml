@@ -4,10 +4,16 @@ channels:
 dependencies:
   - python=3.12
   - pip
+  # --- training (model) ---
+  - numpy=2.3.5
+  - pandas=2.3.3
+  - scikit-learn=1.7.2
+  # --- corpus ---
   - pyyaml
-  - numpy
+  # --- tests ---
   - pytest
   - pip:
+      # --- corpus: embeddings, PDF extraction, vector index ---
       # CPU-only PyTorch (~200 MB instead of ~2 GB with CUDA). The engine service must use the SAME
       # versions of torch and sentence-transformers (embedding.py is shared). Pin them after the first install.
       - --extra-index-url https://download.pytorch.org/whl/cpu

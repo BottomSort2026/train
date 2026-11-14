@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from flame.training.cli import register_commands as register_train_commands  # noqa: E402
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="main.py", description="Flame in Freefall offline pipelines")
@@ -19,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- train: model training (commands added as needed) ---
     train = groups.add_parser("train", help="Model training pipeline")
-    train.add_subparsers(dest="command", required=True)
+    register_train_commands(train.add_subparsers(dest="command", required=True))
 
     # --- corpus: corpus.db build ---
     from flame.corpus.cli import register as register_corpus
