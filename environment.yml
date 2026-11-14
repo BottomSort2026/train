@@ -4,4 +4,7 @@ channels:
 dependencies:
   - python=3.12
   - pip
-  # Add dependencies here as commands are implemented.
+  - numpy=2.3.5
+  - pandas=2.3.3
+  - scikit-learn=1.7.2
+  - pytest
