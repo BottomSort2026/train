@@ -40,6 +40,28 @@ python main.py corpus search "how does CO2 dilution suppress droplet flames"   #
 
 Add `-v` to any command to see the full traceback when it fails.
 
+Start over from zero (deletes the PSI cache, downloads, intermediate files and `corpus.db`; training data is untouched):
+
+```bash
+python main.py corpus clean            # asks for confirmation (-y to skip)
+python main.py corpus build --fresh    # clean + build
+```
+
+### Updating the conda environment
+
+After `environment.yml` changes, the safest way is to recreate the environment:
+
+```bash
+conda deactivate
+conda env remove -n flame-train                         # or: conda env remove -p ~/.envs/flame-train
+conda env create -f environment.yml                     # or: conda env create -f environment.yml -p ~/.envs/flame-train
+conda activate flame-train                              # or: conda activate ~/.envs/flame-train
+```
+
+For small changes (adding a package), `conda env update -f environment.yml --prune` is enough.
+It does not uninstall packages that were installed with pip, so recreate the environment when a package
+moves from pip to conda.
+
 - `src/flame/corpus/schema.sql` is the `corpus.db` contract for the MCP (TypeScript).
 - `src/flame/corpus/embedding.py` is copied **verbatim** into the engine service (`/embed`).
 

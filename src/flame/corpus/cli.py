@@ -41,7 +41,61 @@ def _stage_command(index: int, name: str, module: str):
     return handler
 
 
+def _clean_targets() -> list:
+    """Everything the corpus pipeline generates, as configured in corpus.yml (paths)."""
+    from configs import PROJECT_ROOT
+    from configs.corpus.config_corpus import corpus_settings as s
+
+    targets = [s.paths.raw, s.paths.interim, s.paths.processed, s.paths.output_db, s.paths.manifest,
+               s.paths.output_db.with_name(s.paths.output_db.name + ".tmp")]
+    protected = {PROJECT_ROOT, PROJECT_ROOT / "data", PROJECT_ROOT / "data" / "raw", PROJECT_ROOT / "data" / "interim",
+                 PROJECT_ROOT / "data" / "processed", PROJECT_ROOT / "artifacts", PROJECT_ROOT / "configs",
+                 PROJECT_ROOT / "src"}
+    for t in targets:
+        t = t.resolve()
+        if t in protected or PROJECT_ROOT not in t.parents:
+            raise RuntimeError(f"clean se niega a borrar {t}: revisa 'paths' en corpus.yml")
+    return targets
+
+
+def clean(assume_yes: bool) -> bool:
+    import shutil
+
+    from flame.common.io import rel
+
+    existing = [t for t in _clean_targets() if t.exists()]
+    if not existing:
+        print("  No hay nada que borrar.")
+        return True
+    print("  Se borrará (caché de PSI, descargas, texto, fragmentos, embeddings y corpus.db):")
+    for t in existing:
+        print(f"    {rel(t)}")
+    if not assume_yes and input("  ¿Continuar? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
+        print("  Cancelado.")
+        return False
+    for t in existing:
+        shutil.rmtree(t) if t.is_dir() else t.unlink()
+    print("  Listo: el próximo 'build' empieza desde cero.")
+    return True
+
+
+def _clean(args: argparse.Namespace) -> int:
+    try:
+        return 0 if clean(args.yes) else 1
+    except Exception as e:
+        print(f"✘ clean falló: {e}")
+        return 1
+
+
 def _build(args: argparse.Namespace) -> int:
+    if args.fresh:
+        print("▶ clean (--fresh)")
+        try:
+            if not clean(args.yes):
+                return 1
+        except Exception as e:
+            print(f"✘ clean falló: {e}")
+            return 1
     for index, (name, module, _) in enumerate(STAGES, 1):
         if not run_stage(index, name, module, args.verbose):
             remaining = [n for n, _, _ in STAGES[index:]]
@@ -71,8 +125,14 @@ def register(commands: argparse._SubParsersAction) -> None:
         p.set_defaults(func=_stage_command(index, name, module))
 
     p = commands.add_parser("build", help="Corre todas las etapas en orden y se detiene en la primera que falle")
+    p.add_argument("--fresh", action="store_true", help="borra todo lo generado antes de empezar (como 'clean')")
+    p.add_argument("-y", "--yes", action="store_true", help="no pide confirmación al borrar (con --fresh)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=_build)
+
+    p = commands.add_parser("clean", help="Borra todo lo generado por el corpus (caché, descargas, corpus.db)")
+    p.add_argument("-y", "--yes", action="store_true", help="no pide confirmación")
+    p.set_defaults(func=_clean)
 
     p = commands.add_parser("search", help="Búsqueda de prueba sobre corpus.db (consulta en inglés)")
     p.add_argument("query", help='por ejemplo: "how does CO2 dilution suppress droplet flames"')

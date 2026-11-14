@@ -141,48 +141,122 @@ def _txt(path) -> str:
 
 
 class _MainText(HTMLParser):
-    """Collect the text inside the first <tag> (content selector), skipping scripts and navigation."""
+    """Collect the readable text inside the first <tag>.
 
-    SKIP = {"script", "style", "noscript", "nav", "header", "footer", "svg", "form", "button"}
-    BLOCK = {"p", "div", "section", "article", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "br", "ul", "ol"}
+    Removed:
+      - scripts, styles, navigation, headers, footers, sidebars and form controls
+      - hidden elements: `hidden`, aria-hidden="true", display:none, and modal dialogs (data-reveal, role=dialog).
+        sma.nasa.gov pages carry a hidden modal with text from another page.
+      - link lists: blocks whose text is mostly links (menus, "related articles")
+      - very short blocks (fewer than MIN_WORDS words), except h1–h3 headings: menu items, buttons, labels
+    <form> itself is NOT skipped, because some sites wrap the whole page in one <form>.
+    """
+
+    SKIP = {"script", "style", "noscript", "template", "nav", "header", "footer", "aside", "svg",
+            "button", "select", "option", "textarea", "label", "iframe"}
+    BLOCK = {"p", "div", "section", "article", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "td", "br",
+             "ul", "ol", "table", "figcaption", "blockquote", "dd", "dt"}
+    HEADINGS = {"h1", "h2", "h3"}
+    VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+    MIN_WORDS = 4
+    MAX_LINK_RATIO = 0.6
 
     def __init__(self, tag: str):
         super().__init__(convert_charrefs=True)
-        self.tag, self.depth, self.skip, self.done, self.out = tag, 0, 0, False, []
+        self.tag = tag
+        self.stack: list[tuple[str, bool]] = []  # (tag, hidden-or-skipped)
+        self.inside = 0      # depth inside the target tag
+        self.done = False
+        self.blocks: list[dict] = []
+        self._new_block(None)
+
+    def _new_block(self, tag):
+        self.blocks.append({"tag": tag, "text": [], "link_chars": 0})
+
+    @staticmethod
+    def _hidden(attrs: dict) -> bool:
+        style = (attrs.get("style") or "").replace(" ", "").lower()
+        return ("hidden" in attrs or attrs.get("aria-hidden") == "true" or "display:none" in style
+                or "data-reveal" in attrs or attrs.get("role") in ("dialog", "navigation"))
+
+    def _skipping(self) -> bool:
+        return any(skip for _, skip in self.stack)
+
+    def _in_link(self) -> bool:
+        return any(t == "a" for t, _ in self.stack)
 
     def handle_starttag(self, tag, attrs):
         if self.done:
             return
+        attrs = dict(attrs)
         if tag == self.tag:
-            self.depth += 1
-        if self.depth and tag in self.SKIP:
-            self.skip += 1
-        if self.depth and tag in self.BLOCK:
-            self.out.append("\n\n")
+            self.inside += 1
+        if tag in self.BLOCK and not self._skipping():
+            self._new_block(tag)
+        if tag not in self.VOID:
+            self.stack.append((tag, tag in self.SKIP or self._hidden(attrs)))
 
     def handle_endtag(self, tag):
         if self.done:
             return
-        if self.depth and tag in self.SKIP and self.skip:
-            self.skip -= 1
-        if tag == self.tag and self.depth:
-            self.depth -= 1
-            self.done = self.depth == 0
+        # pop up to the matching open tag (tolerates unclosed tags in messy HTML)
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                break
+        if tag in self.BLOCK:
+            self._new_block(None)
+        if tag == self.tag and self.inside:
+            self.inside -= 1
+            self.done = self.inside == 0
 
     def handle_data(self, data):
-        if self.depth and not self.skip and not self.done:
-            self.out.append(data)
+        if not self.inside or self.done or self._skipping():
+            return
+        block = self.blocks[-1]
+        block["text"].append(data)
+        if self._in_link():
+            block["link_chars"] += len(data.strip())
+
+    def text(self) -> str:
+        kept: list[tuple[str, bool]] = []  # (text, is_heading)
+        seen: set[str] = set()
+        for b in self.blocks:
+            text = re.sub(r"\s+", " ", "".join(b["text"])).strip()
+            if not text:
+                continue
+            if b["link_chars"] / max(len(text), 1) > self.MAX_LINK_RATIO:
+                continue
+            is_heading = b["tag"] in self.HEADINGS
+            if len(text.split()) < self.MIN_WORDS and not is_heading:
+                continue
+            key = text.lower()
+            if key in seen:  # same paragraph repeated by the page layout
+                continue
+            seen.add(key)
+            kept.append((text, is_heading))
+        # drop headings with no body text after them (e.g. a trailing "Related Stories")
+        result = [t for i, (t, h) in enumerate(kept)
+                  if not h or any(not h2 for _, h2 in kept[i + 1:i + 2])]
+        return "\n\n".join(result)
+
+
+def html_text(source: str) -> tuple[str, str]:
+    """Return (text, tag used): the first tag in content_tags with at least min_chars of text."""
+    cfg = _s.extraction.html
+    lengths = []
+    for tag in cfg.content_tags:
+        parser = _MainText(tag)
+        parser.feed(source)
+        text = clean(parser.text())
+        if len(text) >= cfg.min_chars:
+            return text, tag
+        lengths.append(f"<{tag}>={len(text)}")
+    raise ValueError(f"no se encontró contenido principal en el HTML ({', '.join(lengths)} caracteres)")
 
 
 def _html(path) -> str:
-    source = path.read_text(encoding="utf-8", errors="ignore")
-    for tag in (_s.extraction.html.content_selector, _s.extraction.html.fallback_selector):
-        parser = _MainText(tag)
-        parser.feed(source)
-        text = clean(re.sub(r"[ \t]*\n[ \t]*", "\n", "".join(parser.out)))
-        if len(text) > 200:
-            return text
-    raise ValueError("no se encontró contenido principal en el HTML")
+    return html_text(path.read_text(encoding="utf-8", errors="ignore"))[0]
 
 
 # ---------------------------------------------------------------------------

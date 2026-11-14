@@ -149,8 +149,10 @@ extraction:
   txt:
     encodings: [utf-8, cp1252]   # se prueban en orden (los archivos de FLEX vienen en cp1252)
   html:
-    content_selector: main       # solo el contenido principal (sin menú ni pie de página)
-    fallback_selector: body
+    # Etiquetas que contienen el contenido principal, probadas en orden: se usa la primera que tenga
+    # al menos min_chars de texto. Siempre se descartan script, style, nav, header, footer, etc.
+    content_tags: [main, article, body]
+    min_chars: 200
 
 # --- División del texto en fragmentos. ---
 chunking:

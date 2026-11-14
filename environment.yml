@@ -10,14 +10,14 @@ dependencies:
   - scikit-learn=1.7.2
   # --- corpus ---
   - pyyaml
+  # PyTorch, sentence-transformers and PyMuPDF come from conda-forge (not pip), so every compiled module
+  # shares the environment's libstdc++. Mixing pip-installed torch with conda-forge scipy caused
+  # "CXXABI_1.3.15 not found". `pytorch=*=cpu*` selects the CPU-only build.
+  # The engine service must use the SAME versions of pytorch and sentence-transformers (embedding.py is shared).
+  - pytorch=*=cpu*
+  - sentence-transformers
+  - pymupdf
   # --- tests ---
   - pytest
   - pip:
-      # --- corpus: embeddings, PDF extraction, vector index ---
-      # CPU-only PyTorch (~200 MB instead of ~2 GB with CUDA). The engine service must use the SAME
-      # versions of torch and sentence-transformers (embedding.py is shared). Pin them after the first install.
-      - --extra-index-url https://download.pytorch.org/whl/cpu
-      - torch
-      - sentence-transformers
-      - pymupdf
-      - sqlite-vec
+      - sqlite-vec   # pure C extension, no C++ runtime involved

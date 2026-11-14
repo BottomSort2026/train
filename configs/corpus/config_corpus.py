@@ -195,8 +195,15 @@ class TxtExtraction:
 
 @dataclass(frozen=True)
 class HtmlExtraction:
-    content_selector: str
-    fallback_selector: str
+    content_tags: tuple[str, ...]
+    min_chars: int
+
+    def __post_init__(self):
+        if not self.content_tags:
+            raise ValueError("extraction.html.content_tags no puede estar vacío")
+        bad = [t for t in self.content_tags if not re.fullmatch(r"[a-z][a-z0-9]*", t)]
+        if bad:
+            raise ValueError(f"extraction.html.content_tags debe contener nombres de etiqueta HTML: {bad}")
 
 
 @dataclass(frozen=True)
@@ -348,7 +355,7 @@ def init_corpus_settings(path: Path) -> CorpusSettings:
     _check_keys(s["extraction"], {"pdf", "txt", "html"}, "extraction")
     _check_keys(s["extraction"]["pdf"], {"min_chars_per_page", "strip_repeated_lines", "repeated_line_min_ratio"}, "extraction.pdf")
     _check_keys(s["extraction"]["txt"], {"encodings"}, "extraction.txt")
-    _check_keys(s["extraction"]["html"], {"content_selector", "fallback_selector"}, "extraction.html")
+    _check_keys(s["extraction"]["html"], {"content_tags", "min_chars"}, "extraction.html")
     _check_keys(s["chunking"], {"max_tokens", "overlap_tokens", "no_split_doc_types", "context_header"}, "chunking")
     _check_keys(s["chunking"]["context_header"], {"enabled", "template", "max_tokens"}, "chunking.context_header")
     _check_keys(s["embedding"], {"model_id", "revision", "dimension", "normalize", "max_length", "query_prefix",
@@ -390,7 +397,8 @@ def init_corpus_settings(path: Path) -> CorpusSettings:
         extraction=Extraction(
             pdf=PdfExtraction(**ex["pdf"]),
             txt=TxtExtraction(encodings=tuple(ex["txt"]["encodings"])),
-            html=HtmlExtraction(**ex["html"]),
+            html=HtmlExtraction(content_tags=tuple(t.lower() for t in ex["html"]["content_tags"]),
+                                min_chars=ex["html"]["min_chars"]),
         ),
         chunking=Chunking(
             max_tokens=ch["max_tokens"],
