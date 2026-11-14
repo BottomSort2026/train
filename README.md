@@ -20,6 +20,29 @@ python main.py train --help
 python main.py corpus --help
 ```
 
+## Corpus (`corpus.db`)
+
+Configuration: `configs/corpus/corpus.yml`, loaded once into dataclasses by `configs/corpus/config_corpus.py`.
+
+```bash
+python main.py corpus build            # all stages, stops at the first one that fails
+# or stage by stage:
+python main.py corpus inventory        # PSI metadata + file lists (cached)
+python main.py corpus select           # automatic selection with the rules -> documents.jsonl
+python main.py corpus fetch            # downloads (cached; re-run downloads only what is missing)
+python main.py corpus extract          # text per page
+python main.py corpus chunk            # fragments (≤ chunking.max_tokens)
+python main.py corpus embed            # embeddings (BAAI/bge-small-en-v1.5)
+python main.py corpus load             # corpus.db + manifest.json
+
+python main.py corpus search "how does CO2 dilution suppress droplet flames"   # query in English
+```
+
+Add `-v` to any command to see the full traceback when it fails.
+
+- `src/flame/corpus/schema.sql` is the `corpus.db` contract for the MCP (TypeScript).
+- `src/flame/corpus/embedding.py` is copied **verbatim** into the engine service (`/embed`).
+
 ## Layout
 
 ```

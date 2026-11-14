@@ -21,9 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
     train = groups.add_parser("train", help="Model training pipeline")
     train.add_subparsers(dest="command", required=True)
 
-    # --- corpus: corpus.db build (commands added as needed) ---
+    # --- corpus: corpus.db build ---
+    from flame.corpus.cli import register as register_corpus
+
     corpus = groups.add_parser("corpus", help="Corpus (corpus.db) build pipeline")
-    corpus.add_subparsers(dest="command", required=True)
+    register_corpus(corpus.add_subparsers(dest="command", required=True))
 
     return parser
 

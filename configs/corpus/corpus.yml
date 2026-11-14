@@ -1,0 +1,194 @@
+# Configuración de la construcción del corpus (corpus.db, SQLite).
+# La leen todas las etapas `python main.py corpus <etapa>` a través de configs/corpus/config_corpus.py.
+# Para cambiar el corpus se cambia este archivo, no el código.
+
+corpus:
+  name: flame-in-freefall
+  description: "Base de conocimiento de seguridad contra incendios construida con investigaciones de combustión de NASA PSI y recursos de la NASA"
+
+# --- Rutas (relativas a la raíz del repo). Cada etapa lee la salida de la anterior. ---
+paths:
+  raw: data/raw/corpus                   # inventario de PSI (JSON) y archivos descargados
+  interim: data/interim/corpus           # documentos seleccionados y texto extraído
+  processed: data/processed/corpus       # fragmentos y embeddings
+  output_db: artifacts/corpus/corpus.db  # se sobrescribe en cada construcción
+  manifest: artifacts/corpus/manifest.json
+
+# --- Fuentes: dónde busca el script. ---
+# fire_relevance: 1 = directamente sobre incendios en naves, 2 = física de apoyo, 3 = combustión fundamental.
+# No decide qué entra: se guarda con cada documento para que el MCP pueda priorizar o filtrar.
+sources:
+  psi:
+    api_base: https://psi.nasa.gov/geode-py/ws
+    investigation_url: https://psi.nasa.gov/physci/repo/data/investigations/{accession}
+    investigations:
+      # --- relevancia 1: prevención, detección, supresión ---
+      - {accession: PSI-98,  acronym: SAFFIRE-I,   fire_relevance: 1}
+      - {accession: PSI-99,  acronym: SAFFIRE-II,  fire_relevance: 1}
+      - {accession: PSI-100, acronym: SAFFIRE-III, fire_relevance: 1}
+      - {accession: PSI-26,  acronym: BASS,        fire_relevance: 1}
+      - {accession: PSI-25,  acronym: BASS-II,     fire_relevance: 1}
+      - {accession: PSI-69,  acronym: FLEX,        fire_relevance: 1}
+      - {accession: PSI-68,  acronym: FLEX-2,      fire_relevance: 1}
+      - {accession: PSI-102, acronym: SAME,        fire_relevance: 1}
+      - {accession: PSI-101, acronym: SAME-R,      fire_relevance: 1}
+      - {accession: PSI-47,  acronym: DAFT,        fire_relevance: 1}
+      - {accession: PSI-20,  acronym: ACME-BRE,    fire_relevance: 1}   # el challenge lo describe como estudio de inflamabilidad de materiales
+      - {accession: PSI-62,  acronym: null,        fire_relevance: 1}   # modelado de propagación de llama concurrente
+      # --- relevancia 2: física de apoyo mencionada en el challenge ---
+      - {accession: PSI-107, acronym: SPICE,       fire_relevance: 2}
+      - {accession: PSI-60,  acronym: null,        fire_relevance: 2}   # análisis de datos de SPICE
+      - {accession: PSI-115, acronym: null,        fire_relevance: 2}   # simulación de humo basada en SAME
+      - {accession: PSI-159, acronym: ACME CFI-G,  fire_relevance: 2}   # ensayos en microgravedad con mayor O2
+      - {accession: PSI-22,  acronym: ACME E-FIELD Flames, fire_relevance: 2}  # imita gravedad parcial
+      # --- relevancia 3: combustión fundamental ---
+      - {accession: PSI-10,  acronym: ACME Flame Design, fire_relevance: 3}
+      - {accession: PSI-21,  acronym: ACME CLD Flame,    fire_relevance: 3}
+      - {accession: PSI-23,  acronym: ACME s-Flame,      fire_relevance: 3}
+      - {accession: PSI-39,  acronym: CFI,               fire_relevance: 3}
+      - {accession: PSI-106, acronym: SLICE,             fire_relevance: 3}
+      - {accession: PSI-117, acronym: null,              fire_relevance: 3}
+      - {accession: PSI-142, acronym: null,              fire_relevance: 3}
+      # Excluidas a propósito (no tratan de incendios): PSI-181 (soldaduras), PSI-108 (STDCE, convección).
+
+  # Recursos fuera de PSI (pestaña "Resources" del challenge). Se declaran a mano porque no tienen API.
+  # related_accessions vincula el recurso con investigaciones, para que aparezca al filtrar por accession.
+  external:
+    # --- Fichas oficiales de NASA Glenn (2025) ---
+    - {id: fs-acme,    ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Advanced Combustion via Microgravity Experiments (ACME)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/advanced-combustion-via-microgravity-experiments-acme.pdf",
+       related_accessions: [PSI-10, PSI-20, PSI-21, PSI-22, PSI-23, PSI-159]}
+    - {id: fs-bass,    ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Burning and Suppression of Solids (BASS)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/burning-and-suppression-of-solids-bass.pdf",
+       related_accessions: [PSI-26, PSI-25]}
+    - {id: fs-daft,    ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Dust and Aerosol Measurement Feasibility Test (DAFT)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/dust-and-aerosol-measurement-feasibility-test-daft.pdf",
+       related_accessions: [PSI-47]}
+    - {id: fs-flex,    ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Flame Extinguishment Experiment (FLEX)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/flame-extinguishment-experiment-flex.pdf",
+       related_accessions: [PSI-69, PSI-68]}
+    - {id: fs-same,    ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Smoke Aerosol Measurement Experiment (SAME)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/smoke-aerosol-measurement-experiment-same.pdf",
+       related_accessions: [PSI-102, PSI-101]}
+    - {id: fs-spice,   ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Smoke Point In Co-flow Experiment (SPICE)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/smoke-point-in-co-flow-experiment-spice.pdf",
+       related_accessions: [PSI-107, PSI-60]}
+    - {id: fs-saffire, ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Spacecraft Fire Safety Demonstration (Saffire)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/spacecraft-fire-safety-demonstration-saffire.pdf",
+       related_accessions: [PSI-98, PSI-99, PSI-100]}
+    - {id: fs-slice,   ingest_stage: 0, doc_type: factsheet, format: pdf, title: "Structure & Liftoff In Combustion Experiment (SLICE)",
+       url: "https://www.nasa.gov/wp-content/uploads/2025/07/structure-liftoff-in-combustion-experiment-slice.pdf",
+       related_accessions: [PSI-106]}
+    # --- Fundamentos: responde preguntas básicas ---
+    - {id: book-reduced-gravity, ingest_stage: 0, doc_type: book, format: pdf,
+       title: "A Researcher's Guide to: Combustion Science (Combustion in Reduced Gravity), NP-2015-10-034-JSC",
+       authors: "Gokoglu, Dietrich, Stocker, Ferkul, Olson, Hicks", year: 2015,
+       url: "https://www.nasa.gov/wp-content/uploads/2016/05/np-2015-10-034-jsc_combustion_in_reduced_gravity-iss-mini-book-011116-508.pdf",
+       related_accessions: []}
+    # --- Historia: lecciones de incendios reales (solo el texto de la página, no los reportes enlazados) ---
+    - {id: hist-apollo1,  ingest_stage: 1, doc_type: web, format: html, title: "Apollo 1 (NASA Safety & Mission Assurance)",
+       url: "https://sma.nasa.gov/sma-disciplines/accllp/apollo-1", related_accessions: []}
+    - {id: hist-apollo13, ingest_stage: 1, doc_type: web, format: html, title: "Apollo 13 (NASA Safety & Mission Assurance)",
+       url: "https://sma.nasa.gov/sma-disciplines/accllp/apollo-13", related_accessions: []}
+    - {id: hist-mir,      ingest_stage: 1, doc_type: web, format: html, title: "25 Years Ago: Fire Aboard Space Station Mir",
+       url: "https://www.nasa.gov/history/25-years-ago-fire-aboard-space-station-mir/", related_accessions: []}
+    # --- Aplicaciones en la Tierra (objetivo opcional del challenge) ---
+    - {id: spinoff-air-tanks,   ingest_stage: 1, doc_type: web, format: html, title: "Fireman's Air Tanks (NASA Spinoff)",
+       url: "https://spinoff.nasa.gov/node/9582", related_accessions: []}
+    - {id: spinoff-detector,    ingest_stage: 1, doc_type: web, format: html, title: "Fire Detector (NASA Spinoff)",
+       url: "https://spinoff.nasa.gov/node/9407", related_accessions: []}
+    - {id: spinoff-fire-attire, ingest_stage: 1, doc_type: web, format: html, title: "New Technology for the Fire Attire (NASA Spinoff)",
+       url: "https://spinoff.nasa.gov/node/9918", related_accessions: []}
+    # No incluido: el video de YouTube (https://www.youtube.com/watch?v=W1oXykoz9zg). Agregarlo solo si hay transcripción.
+
+# --- Selección automática de archivos de PSI (sin revisión manual). ---
+# ingest_stage: 0 = fundamentos y resúmenes, 1 = documentos técnicos principales, 2 = documentos secundarios.
+selection:
+  build_stages: [0]              # etapas que se construyen ahora. Agregar 1 y luego 2 según el tiempo.
+
+  # Cada investigación incluida genera una ficha de texto a partir de sus metadatos de PSI.
+  investigation_cards: {ingest_stage: 0, doc_type: metadata}
+
+  allowed_extensions: [.pdf, .txt]
+  max_file_mb: 60
+
+  # Las reglas se evalúan en orden y la PRIMERA que coincide decide. Si ninguna coincide, el archivo se descarta.
+  # Campos de coincidencia (todos opcionales; deben cumplirse todos los presentes):
+  #   ext, folder, file_regex, subcategory_regex, accessions, max_fire_relevance.
+  # Las expresiones regulares no distinguen mayúsculas de minúsculas.
+  rules:
+    # --- primero las exclusiones: archivos sin texto útil ---
+    - {name: proof-sheets,   action: exclude, file_regex: 'proof.?sheet|velocity traces|^\d+_\d+\.pdf$'}
+    - {name: plot-summaries, action: exclude, file_regex: '_summary\.pdf$|resultssummary'}
+    # --- etapa 0: hojas por ensayo de FLEX (condiciones y comentarios del investigador) ---
+    - {name: flex-testsheets, action: include, doc_type: testsheet, ingest_stage: 0,
+       accessions: [PSI-69, PSI-68], ext: .txt, file_regex: '_testsheet\.txt$'}
+    - {name: other-txt, action: exclude, ext: .txt}
+    # --- etapa 1: documentos técnicos principales ---
+    - {name: published-papers, action: include, doc_type: paper, ingest_stage: 1,
+       ext: .pdf, subcategory_regex: '^Legacy/\d{4} - '}
+    - {name: reports,      action: include, doc_type: report,      ingest_stage: 1, ext: .pdf,
+       folder: Reports, max_fire_relevance: 2}
+    - {name: science-docs, action: include, doc_type: science_doc, ingest_stage: 1, ext: .pdf,
+       folder: Science Documents, max_fire_relevance: 2}
+    # --- etapa 2: documentos secundarios, solo investigaciones de relevancia 1 ---
+    - {name: presentations,    action: include, doc_type: presentation, ingest_stage: 2, ext: .pdf,
+       folder: Presentations, max_fire_relevance: 1}
+    - {name: engineering-docs, action: include, doc_type: engineering,  ingest_stage: 2, ext: .pdf,
+       folder: Engineering Documents, max_fire_relevance: 1}
+
+  # Freno de emergencia: rutas de PSI (remote_path) o ids de recursos externos que meten ruido.
+  exclude: []
+
+# --- Conversión de cada formato a texto. ---
+extraction:
+  pdf:
+    min_chars_per_page: 50       # las páginas con menos texto se reportan (posible escaneo); no se aplica OCR
+    strip_repeated_lines: true   # quita encabezados y pies de página repetidos
+    repeated_line_min_ratio: 0.5 # una línea presente en >= 50 % de las páginas se considera encabezado o pie
+  txt:
+    encodings: [utf-8, cp1252]   # se prueban en orden (los archivos de FLEX vienen en cp1252)
+  html:
+    content_selector: main       # solo el contenido principal (sin menú ni pie de página)
+    fallback_selector: body
+
+# --- División del texto en fragmentos. ---
+chunking:
+  max_tokens: 400                # medido con el tokenizador del modelo de embeddings
+  overlap_tokens: 50             # texto repetido entre fragmentos consecutivos
+  no_split_doc_types: [testsheet]   # se mantienen enteros si caben en max_tokens
+  context_header:
+    enabled: true                # se antepone solo para calcular el embedding; el texto guardado queda limpio
+    template: "[{acronym} | {title} | p.{page}]"
+    max_tokens: 60               # el encabezado se recorta si supera este largo
+
+# --- Modelo de embeddings: CONTRATO con el servicio engine (/embed). ---
+# Se copia tal cual a corpus_info; /embed debe usar exactamente estos valores.
+embedding:
+  model_id: BAAI/bge-small-en-v1.5
+  revision: null                 # PENDIENTE: fijar el hash del commit de Hugging Face tras la primera descarga
+  dimension: 384
+  normalize: true                # vectores normalizados: la similitud coseno equivale al producto punto
+  max_length: 512                # máximo de tokens que acepta el modelo
+  query_prefix: "Represent this sentence for searching relevant passages: "   # solo para consultas
+  document_prefix: ""            # los fragmentos no llevan prefijo
+  batch_size: 32
+  device: cpu
+
+# --- Búsqueda por defecto. Se copia a corpus_info para que el MCP la lea desde la base. ---
+search:
+  k: 5                           # fragmentos que se entregan al LLM
+  candidates_per_method: 20      # candidatos de BM25 y de vectores antes de combinarlos
+  fusion: rrf                    # reciprocal rank fusion
+  rrf_k: 60
+  fts_tokenizer: "porter unicode61 remove_diacritics 2"   # tokenizador de FTS5; queda fijo en corpus.db
+
+# --- Uso de la API de la NASA: ser amables con un servidor público. ---
+network:
+  timeout_api_s: 300             # /versions tardó más de 120 s en PSI-68 y PSI-106
+  timeout_download_s: 600
+  retries: 3
+  backoff_s: 5
+  concurrency: 3
+  delay_between_requests_s: 0.5
+  user_agent: "flame-corpus-builder/0.1"   # genérico, sin datos personales
