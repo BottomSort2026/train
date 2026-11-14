@@ -24,9 +24,13 @@ python main.py corpus --help
 
 ```
 configs/training/   YAML configs, one per training experiment
+configs/corpus/     corpus build config (sources, tiers, chunking, embedding model)
 src/flame/common/   shared utilities
 src/flame/training/ training pipeline
+src/flame/corpus/   corpus pipeline: fetch → extract → chunk → embed → corpus.db
+eval/               RAG evaluation question set
 data/               raw/ → interim/ → processed/ (not committed)
 artifacts/models/   exported model bundles (not committed)
+artifacts/corpus/   built corpus.db + manifest (not committed)
 tests/
 ```
