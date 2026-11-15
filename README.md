@@ -36,9 +36,12 @@ python main.py corpus embed            # embeddings (BAAI/bge-small-en-v1.5)
 python main.py corpus load             # corpus.db + manifest.json
 
 python main.py corpus search "how does CO2 dilution suppress droplet flames"   # query in English
+python main.py corpus eval             # search quality on eval/questions.yml (recall@k, MRR)
+python main.py corpus info             # what corpus.db contains + versions to pin in engine
 ```
 
 Add `-v` to any command to see the full traceback when it fails.
+Once the model is downloaded, `export HF_HUB_OFFLINE=1` stops the Hugging Face Hub checks (and their warning).
 
 Start over from zero (deletes the PSI cache, downloads, intermediate files and `corpus.db`; training data is untouched):
 

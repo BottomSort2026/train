@@ -1,0 +1,63 @@
+# Preguntas de evaluación del corpus (`python main.py corpus eval`).
+# Una pregunta acierta si ALGUNO de los documentos esperados aparece entre los k primeros resultados.
+# expected admite:
+#   - un doc_id exacto: "ext:fs-flex", "PSI-69:card"
+#   - un patrón por investigación y tipo: {accession: PSI-69, doc_type: testsheet}
+# Las consultas van en inglés (política de idioma). Hay preguntas básicas y técnicas.
+# Al agregar etapas (papers, reportes), sumar preguntas que solo esos documentos puedan responder.
+
+questions:
+  # --- básicas ---
+  - query: "Why does a flame become spherical in microgravity?"
+    level: basic
+    expected: ["ext:book-reduced-gravity"]
+  - query: "What is the difference between a flame in microgravity and a flame on Earth?"
+    level: basic
+    expected: ["ext:book-reduced-gravity"]
+  - query: "Why is fire dangerous on a spacecraft?"
+    level: basic
+    expected: ["ext:book-reduced-gravity", "ext:fs-saffire", "PSI-98:card", "PSI-99:card", "PSI-100:card"]
+
+  # --- supresión (FLEX) ---
+  - query: "What gaseous suppressants were tested in FLEX?"
+    level: technical
+    expected: ["ext:fs-flex", "PSI-69:card", "PSI-68:card"]
+  - query: "how does CO2 dilution suppress droplet flames"
+    level: technical
+    expected: ["ext:fs-flex", "PSI-69:card", "ext:book-reduced-gravity"]
+  - query: "FLEX test with a heptane droplet in a helium-diluted atmosphere"
+    level: technical
+    expected: [{accession: PSI-69, doc_type: testsheet}]
+  - query: "cool flames in droplet combustion"
+    level: technical
+    expected: ["PSI-39:card", "PSI-117:card", "PSI-68:card", "PSI-159:card"]
+
+  # --- prevención: materiales sólidos ---
+  - query: "flammability of solid materials like PMMA in low gravity"
+    level: technical
+    expected: ["ext:fs-bass", "PSI-26:card", "PSI-25:card"]
+  - query: "large-scale fire experiment on an uncrewed cargo vehicle"
+    level: technical
+    expected: ["ext:fs-saffire", "PSI-98:card", "PSI-99:card", "PSI-100:card"]
+  - query: "burning rate emulator for condensed-phase fuels"
+    level: technical
+    expected: ["PSI-20:card", "ext:fs-acme"]
+
+  # --- detección ---
+  - query: "smoke particle measurement for spacecraft smoke detectors"
+    level: technical
+    expected: ["ext:fs-same", "PSI-102:card", "PSI-101:card"]
+  - query: "dust and aerosol measurement on the ISS"
+    level: technical
+    expected: ["ext:fs-daft", "PSI-47:card"]
+
+  # --- física de apoyo ---
+  - query: "smoke point of laminar jet diffusion flames"
+    level: technical
+    expected: ["ext:fs-spice", "PSI-107:card"]
+  - query: "structure and liftoff of lifted jet flames"
+    level: technical
+    expected: ["ext:fs-slice", "PSI-106:card"]
+  - query: "electric field effects on laminar diffusion flames"
+    level: technical
+    expected: ["PSI-22:card", "ext:fs-acme"]

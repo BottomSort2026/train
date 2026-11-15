@@ -69,27 +69,9 @@ def card_text(accession: str) -> str:
         value = _plain(meta.get(key))
         if value:
             parts.append(f"{label}: {value}")
-    people = []
-    for c in meta.get("contacts", []):
-        name = " ".join(x for x in (c.get("firstName"), c.get("midInitials"), c.get("lastName")) if x)
-        roles = ", ".join(r.get("annotationValue", "") for r in c.get("roles", []) if r.get("annotationValue"))
-        extra = "; ".join(x for x in (roles, c.get("affiliation")) if x)
-        if name:
-            people.append(f"{name} ({extra})" if extra else name)
-    if people:
-        parts.append("Investigators: " + "; ".join(people))
-    pubs = []
-    for p in meta.get("publications", []):
-        title = _plain(p.get("title"))
-        if title:
-            line = f"- {title}"
-            if p.get("authorList"):
-                line += f". {_plain(p['authorList'])}"
-            if p.get("doi"):
-                line += f". DOI: {p['doi']}"
-            pubs.append(line)
-    if pubs:
-        parts.append("Publications:\n" + "\n".join(pubs))
+    # Investigators and publications are deliberately NOT part of the searchable card: as fragments, those lists
+    # get a generic "combustion" embedding and show up in almost every search. They stay available in
+    # investigations.metadata_json (get_investigation).
     return "\n\n".join(parts)
 
 
@@ -125,6 +107,41 @@ def _strip_repeated_lines(pages: list[str]) -> list[str]:
     counts = Counter(n for page in pages for n in {norm(p) for p in page.split("\n\n") if p.strip()})
     repeated = {n for n, c in counts.items() if c / len(pages) >= cfg.repeated_line_min_ratio and len(n) < 200}
     return ["\n\n".join(p for p in page.split("\n\n") if norm(p) not in repeated) for page in pages]
+
+
+_REFERENCES_HEADING = re.compile(
+    r"^(references|reference list|bibliography|works cited|literature cited|cited literature|"
+    r"selected publications|publications)\s*:?$", re.I)
+_CITATION_MARKERS = re.compile(
+    r"\bdoi\b|doi\.org|\bvol\.|\bpp\.|\bproceedings\b|\bjournal\b|\bet al\.|\(\d{4}\)|\b(?:19|20)\d{2}[a-z]?[.;,)]|"
+    r"\bAIAA\b|NASA/(?:TM|CR|TP)|\bISBN\b|\bISSN\b|combust\.|\bsymp(?:osium)?\b", re.I)
+
+
+def is_citation_paragraph(paragraph: str) -> bool:
+    """A paragraph that is mostly bibliographic references (several citation markers, densely packed)."""
+    hits = len(_CITATION_MARKERS.findall(paragraph))
+    words = max(len(paragraph.split()), 1)
+    return hits >= 3 and hits / words >= 1 / 25
+
+
+def strip_references(pages: list[str]) -> tuple[list[str], int]:
+    """Remove bibliography: everything after a 'References' heading on its page, plus citation-dense paragraphs
+    on any page. Returns (pages, number of paragraphs removed)."""
+    if not _s.extraction.pdf.drop_references:
+        return pages, 0
+    removed = 0
+    out = []
+    for page in pages:
+        kept, in_refs = [], False
+        for p in page.split("\n\n"):
+            if _REFERENCES_HEADING.match(p.strip()):
+                in_refs = True
+            if in_refs or is_citation_paragraph(p):
+                removed += 1
+                continue
+            kept.append(p)
+        out.append("\n\n".join(kept))
+    return out, removed
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +283,7 @@ def run() -> None:
     docs = list(read_jsonl(documents_path()))
     rows: list[dict] = []
     low_text: list[str] = []
+    references_removed = 0
     failures: list[str] = []
     min_chars = _s.extraction.pdf.min_chars_per_page
 
@@ -279,13 +297,14 @@ def run() -> None:
                 raise FileNotFoundError(f"no está descargado ({doc['local_path']}). Corre 'fetch'.")
             if doc["format"] == "pdf":
                 pages = _strip_repeated_lines(_pdf_pages(path))
-                empty = 0
+                # pages without text BEFORE removing references = possible scans (reported, no OCR)
+                empty = sum(len(clean(p)) < min_chars for p in pages)
+                pages, n_refs = strip_references(pages)
+                references_removed += n_refs
                 for i, text in enumerate(pages, 1):
                     text = clean(text)
-                    if len(text) < min_chars:
-                        empty += 1
-                        continue
-                    rows.append({"doc_id": doc["doc_id"], "page": i, "text": text})
+                    if len(text) >= min_chars:
+                        rows.append({"doc_id": doc["doc_id"], "page": i, "text": text})
                 if empty:
                     low_text.append(f"{doc['doc_id']} ({doc['title'][:50]}): {empty}/{len(pages)} páginas sin texto")
             elif doc["format"] == "txt":
@@ -302,6 +321,8 @@ def run() -> None:
     with_text = len({r["doc_id"] for r in rows})
     print(f"  {n} páginas de texto de {with_text}/{len(docs)} documentos -> {rel(pages_path())}")
     print(f"  {sum(len(r['text']) for r in rows) / 1e6:.2f} M caracteres en total")
+    if references_removed:
+        print(f"  {references_removed} párrafos de referencias bibliográficas descartados")
     if low_text:
         print(f"  {len(low_text)} PDFs con páginas sin texto (posibles escaneos, no se aplica OCR):")
         for line in low_text[:15]:

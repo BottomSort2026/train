@@ -182,6 +182,7 @@ class PdfExtraction:
     min_chars_per_page: int
     strip_repeated_lines: bool
     repeated_line_min_ratio: float
+    drop_references: bool
 
     def __post_init__(self):
         if not 0 < self.repeated_line_min_ratio <= 1:
@@ -353,7 +354,7 @@ def init_corpus_settings(path: Path) -> CorpusSettings:
     _check_keys(s["selection"], {"build_stages", "investigation_cards", "allowed_extensions", "max_file_mb", "rules", "exclude"}, "selection")
     _check_keys(s["selection"]["investigation_cards"], {"ingest_stage", "doc_type"}, "selection.investigation_cards")
     _check_keys(s["extraction"], {"pdf", "txt", "html"}, "extraction")
-    _check_keys(s["extraction"]["pdf"], {"min_chars_per_page", "strip_repeated_lines", "repeated_line_min_ratio"}, "extraction.pdf")
+    _check_keys(s["extraction"]["pdf"], {"min_chars_per_page", "strip_repeated_lines", "repeated_line_min_ratio", "drop_references"}, "extraction.pdf")
     _check_keys(s["extraction"]["txt"], {"encodings"}, "extraction.txt")
     _check_keys(s["extraction"]["html"], {"content_tags", "min_chars"}, "extraction.html")
     _check_keys(s["chunking"], {"max_tokens", "overlap_tokens", "no_split_doc_types", "context_header"}, "chunking")

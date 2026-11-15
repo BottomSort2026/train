@@ -146,6 +146,8 @@ extraction:
     min_chars_per_page: 50       # las páginas con menos texto se reportan (posible escaneo); no se aplica OCR
     strip_repeated_lines: true   # quita encabezados y pies de página repetidos
     repeated_line_min_ratio: 0.5 # una línea presente en >= 50 % de las páginas se considera encabezado o pie
+    drop_references: true        # descarta la bibliografía: lo que sigue a un título "References" en su página y
+                                 # los párrafos con muchas marcas de cita (DOI, Vol., pp., Proceedings, año...)
   txt:
     encodings: [utf-8, cp1252]   # se prueban en orden (los archivos de FLEX vienen en cp1252)
   html:

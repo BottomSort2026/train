@@ -118,6 +118,26 @@ def _search(args: argparse.Namespace) -> int:
     return 0
 
 
+def _eval(args: argparse.Namespace) -> int:
+    from flame.corpus import evaluate
+
+    try:
+        evaluate.run(args.questions, args.k)
+    except Exception as e:
+        print(f"✘ eval falló: {e}")
+        if args.verbose:
+            traceback.print_exc()
+        return 1
+    return 0
+
+
+def _info(args: argparse.Namespace) -> int:
+    from flame.corpus import info
+
+    info.run()
+    return 0
+
+
 def register(commands: argparse._SubParsersAction) -> None:
     for index, (name, module, help_text) in enumerate(STAGES, 1):
         p = commands.add_parser(name, help=help_text)
@@ -139,3 +159,12 @@ def register(commands: argparse._SubParsersAction) -> None:
     p.add_argument("-k", type=int, default=None, help="cantidad de resultados (por defecto: search.k)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=_search)
+
+    p = commands.add_parser("eval", help="Mide la búsqueda con eval/questions.yml (recall@k y MRR)")
+    p.add_argument("--questions", default=None, help="archivo de preguntas (por defecto: eval/questions.yml)")
+    p.add_argument("-k", type=int, default=None, help="cantidad de resultados (por defecto: search.k)")
+    p.add_argument("-v", "--verbose", action="store_true")
+    p.set_defaults(func=_eval)
+
+    p = commands.add_parser("info", help="Muestra el contenido de corpus.db y las versiones a fijar")
+    p.set_defaults(func=_info)

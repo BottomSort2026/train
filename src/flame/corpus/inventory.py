@@ -18,15 +18,36 @@ def inventory_dir():
 
 
 def current_files(versions: dict) -> list[dict]:
-    """Apply added / modified / removed across versions to get the current file set."""
+    """Apply added / modified / removed across versions to get the current file set.
+
+    - Versions are applied in ascending `version` order, whatever order the API returns them in
+      (otherwise a file removed in v5 could reappear when v2 is applied afterwards).
+    - A `modified` record with `new_file_name` is a rename: the file keeps its identity (same key) but takes
+      the new name, because the download endpoint looks files up by name.
+    """
     def key(f: dict) -> str:
         return f.get("remote_path") or f.get("s3_path") or f.get("file_name")
 
+    def renamed(f: dict) -> dict:
+        new = f.get("new_file_name")
+        if new and new != f.get("file_name"):
+            f = {**f, "file_name": new, "previous_file_name": f.get("file_name")}
+            if f.get("remote_path"):
+                f["remote_path"] = f["remote_path"].rsplit("/", 1)[0] + "/" + new
+        return f
+
+    ordered = sorted(versions.get("versions", []), key=lambda v: v.get("version", 0))
     current: dict[str, dict] = {}
-    for ver in versions.get("versions", []):
-        for f in ver.get("added", []) + ver.get("modified", []):
+    for ver in ordered:
+        for f in ver.get("added", []):
             if isinstance(f, dict):
                 current[key(f)] = f
+        for f in ver.get("modified", []):
+            if isinstance(f, dict):
+                old_key = key(f)
+                new = renamed(f)
+                current.pop(old_key, None)
+                current[key(new)] = new
         for f in ver.get("removed", []):
             if isinstance(f, dict):
                 current.pop(key(f), None)

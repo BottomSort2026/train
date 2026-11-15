@@ -20,7 +20,17 @@ from flame.corpus.select import documents_path
 _s = corpus_settings
 SCHEMA_VERSION = 1
 SCHEMA_FILE = Path(__file__).with_name("schema.sql")
-_PRIVATE_CONTACT_FIELDS = ("email", "phone", "fax", "address")
+# metadata_json keeps ONLY these descriptive fields (an allow-list). The raw PSI record also carries file
+# lists (added / removed / modified, megabytes per investigation), legacy file URLs and S3 paths, which would
+# flood the LLM context through get_investigation and must never be cited.
+_METADATA_FIELDS = (
+    "accession", "title", "investigationAcronym", "researchArea", "subResearchArea", "projectType",
+    "proposalTitle", "flightProgram", "spaceProgram", "managingNasaCenter", "missionName",
+    "experimentHardware", "experimentHardwareLink", "investigationStartDate", "investigationEndDate",
+    "objective", "hypothesis", "approach", "researchImpacts", "description", "funding",
+    "doi", "licenseName", "licenseIdentifier", "licenseLink", "releaseDate",
+)
+_CONTACT_FIELDS = ("firstName", "midInitials", "lastName", "affiliation")  # no email, phone, fax or address
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -33,13 +43,24 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _public_metadata(meta: dict) -> dict:
-    """PSI metadata without contact details (emails, phones...), for the investigations table."""
-    meta = json.loads(json.dumps(meta))
+def public_metadata(meta: dict) -> dict:
+    """Descriptive PSI metadata for investigations.metadata_json (allow-list; no file lists, no contact details)."""
+    out = {k: meta[k] for k in _METADATA_FIELDS if meta.get(k) not in (None, "", [])}
+    people = []
     for c in meta.get("contacts", []):
-        for f in _PRIVATE_CONTACT_FIELDS:
-            c.pop(f, None)
-    return meta
+        person = {k: c[k] for k in _CONTACT_FIELDS if c.get(k)}
+        roles = [r.get("annotationValue") for r in c.get("roles", []) if r.get("annotationValue")]
+        if roles:
+            person["roles"] = roles
+        if person:
+            people.append(person)
+    if people:
+        out["investigators"] = people
+    pubs = [{k: p[k] for k in ("title", "authorList", "doi") if p.get(k)} for p in meta.get("publications", [])]
+    pubs = [p for p in pubs if p.get("title")]
+    if pubs:
+        out["publications"] = pubs
+    return out
 
 
 def run() -> None:
@@ -77,7 +98,7 @@ def run() -> None:
             "INSERT INTO investigations VALUES (?, ?, ?, ?, ?, ?)",
             [(inv.accession, inv.acronym, load_metadata(inv.accession).get("title") or inv.accession,
               inv.fire_relevance, url_tpl.format(accession=inv.accession),
-              json.dumps(_public_metadata(load_metadata(inv.accession)), ensure_ascii=False))
+              json.dumps(public_metadata(load_metadata(inv.accession)), ensure_ascii=False))
              for inv in _s.sources.psi.investigations],
         )
         conn.executemany(

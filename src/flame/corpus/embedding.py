@@ -50,7 +50,9 @@ class Embedder:
         self.config = config
         self.model = SentenceTransformer(config.model_id, revision=config.revision, device=config.device)
         self.model.max_seq_length = config.max_length
-        dim = self.model.get_sentence_embedding_dimension()
+        # Newer sentence-transformers renamed get_sentence_embedding_dimension -> get_embedding_dimension.
+        get_dim = getattr(self.model, "get_embedding_dimension", None) or self.model.get_sentence_embedding_dimension
+        dim = get_dim()
         if dim != config.dimension:
             raise ValueError(f"El modelo {config.model_id} produce {dim} dimensiones, la configuración dice {config.dimension}")
 
