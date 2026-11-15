@@ -140,7 +140,8 @@ selection:
   # Freno de emergencia: rutas de PSI (remote_path, exactas) o ids de recursos externos que meten ruido.
   exclude:
     # 2026-11-15: PSI los lista pero no se pueden descargar (fetch falla siempre). Archivos legacy cuya URL firmada
-    # apunta a un objeto que no existe en S3 (NoSuchKey); el de PSI-21 lo rechaza la API ("Invalid Id").
+    # apunta a un objeto que no existe en S3 (NoSuchKey). Los de PSI-21 los rechaza la API ("Invalid Id") porque
+    # el nombre lleva "&": falla con cualquier codificación (probado con %26 y %2526).
     - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE Obj, Dev, and Status.pdf"
     - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_45 I Con of Env Sys presentation.pdf"
     - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_46th I Con of Env Sys paper.pdf"
@@ -151,6 +152,7 @@ selection:
     - "/Home/psi-data/PSI-26/Reports/PSI-26_Reports_SPICE_FinalReport.pdf"
     - "/Home/psi-data/PSI-26/Reports/PSI-26_Reports_BASS_FinalReport.pdf"
     - "/Home/psi-data/PSI-21/Raw Data/2017 Giassi & Long Demosaicing algorithms for the improvement of spatial resolution and accuracy ....pdf"
+    - "/Home/psi-data/PSI-21/Raw Data/2021 Tinajero & Long Dilution Limits of Coflow Laminar Methane and Ethylene Flames in Microgravity ....pdf"
 
 # --- Conversión de cada formato a texto. ---
 extraction:
