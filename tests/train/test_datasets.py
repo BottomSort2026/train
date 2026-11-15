@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from configs.training.config_training import Exclusion
 from flame.training.datasets import apply_exclusions, build_training_data, exclusion_mask
 
 from conftest import EXCLUDED_BY_FILTER, SYNTHETIC_SHA256
@@ -16,8 +17,8 @@ def test_exclusions_are_counted_per_filter_in_order(synthetic_table, synthetic_d
 
 def test_a_row_matching_two_filters_is_counted_once():
     table = pd.DataFrame({"a": [1.0, None, None], "b": [True, True, False]})
-    kept, removed = apply_exclusions(table, [{"name": "missing_a", "column": "a", "rule": "is_null"},
-                                             {"name": "flagged_b", "column": "b", "rule": "is_true"}])
+    kept, removed = apply_exclusions(table, [Exclusion(name="missing_a", column="a", rule="is_null"),
+                                             Exclusion(name="flagged_b", column="b", rule="is_true")])
     assert removed == {"missing_a": 2, "flagged_b": 1}
     assert len(kept) == 0
 

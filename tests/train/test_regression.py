@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from flame.training.config import load_config, validate_config
+from configs.training.config_training import MetricRule, experiment_from_values, load_experiment, load_values
 from flame.training.datasets import build_training_data
 from flame.training.evaluate import absolute_error_by_region, evaluate_models, evaluation_splits
 from flame.training.export import export_from_data
@@ -19,7 +19,7 @@ RESPONSE_FIELDS = ["extinction_diameter_ratio", "extinction_diameter_mm", "in_te
 
 @pytest.fixture(scope="module")
 def extinction_config():
-    return faster(load_config(EXTINCTION_CONFIG))
+    return faster(load_experiment(EXTINCTION_CONFIG))
 
 
 @pytest.fixture(scope="module")
@@ -40,14 +40,14 @@ def test_extinction_config_is_a_regression_with_a_ridge_baseline(extinction_conf
     assert extinction_config.model_version == "flex-extinction-0.2"
     assert extinction_config.baseline_name == "ridge"
     assert extinction_config.candidate_names == ["hgb"]
-    assert extinction_config.section("selection")["must_beat"] == [{"metric": "mae", "direction": "lower"}]
+    assert extinction_config.selection.must_beat == (MetricRule("mae", "lower"),)
 
 
 def test_regression_config_needs_an_output_name_and_strata(extinction_config):
-    values = {name: dict(section) for name, section in extinction_config.values.items()}
+    values, sha256, _ = load_values(EXTINCTION_CONFIG)
     del values["cv"]["stratify_bins"]
     with pytest.raises(ValueError, match="stratify_bins"):
-        validate_config(values)
+        experiment_from_values(values, extinction_config.path, sha256)
 
 
 def test_only_extinction_rows_with_a_measured_diameter_are_used(synthetic_table, extinction_data):
@@ -62,7 +62,7 @@ def test_only_extinction_rows_with_a_measured_diameter_are_used(synthetic_table,
 
 def test_regression_folds_are_grouped_and_stratified_on_target_bins(extinction_data, extinction_config):
     labels = stratification_labels(extinction_data.target, extinction_config)
-    assert labels.nunique() == extinction_config.section("cv")["stratify_bins"]
+    assert labels.nunique() == extinction_config.cv.stratify_bins
     groups = extinction_data.groups.to_numpy()
     for split in evaluation_splits(extinction_data, extinction_config):
         assert not set(groups[split.train]) & set(groups[split.test])

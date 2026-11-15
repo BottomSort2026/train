@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -10,37 +9,36 @@ import pandas as pd
 import pytest
 
 TRAIN_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(TRAIN_ROOT / "src"))
+for path in (TRAIN_ROOT, TRAIN_ROOT / "src"):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
-from flame.training.config import ExperimentConfig, load_config
+from configs.training.config_training import ExperimentConfig, load_experiment
 from flame.training.datasets import TrainingData, build_training_data
 from flame.training.export import export_from_data
 from flame.training.inference import load_bundle
 
-OUTCOME_CONFIG = "configs/training/flex_outcome.toml"
-SENSITIVITY_CONFIG = "configs/training/flex_outcome_sensitivity.toml"
-EXTINCTION_CONFIG = "configs/training/flex_extinction.toml"
+OUTCOME_CONFIG = "configs/training/flex_outcome.yml"
+SENSITIVITY_CONFIG = "configs/training/flex_outcome_sensitivity.yml"
+EXTINCTION_CONFIG = "configs/training/flex_extinction.yml"
 SYNTHETIC_SHA256 = "0" * 64
 FAST_REPEATS = 2
 FAST_BOOSTING_ITERATIONS = 20
 EXCLUDED_BY_FILTER = {"duplicate_test": 1, "missing_initial_diameter": 2, "high_pressure": 2, "unknown_fiber": 1}
 
 
-def with_values(config: ExperimentConfig, **changes: dict) -> ExperimentConfig:
-    values = copy.deepcopy(config.values)
-    for section, updates in changes.items():
-        values[section] = {**values.get(section, {}), **updates}
-    return replace(config, values=values)
+def with_values(config: ExperimentConfig, **sections) -> ExperimentConfig:
+    return replace(config, **sections)
 
 
 def faster(config: ExperimentConfig) -> ExperimentConfig:
-    values = copy.deepcopy(config.values)
-    values["cv"]["n_repeats"] = FAST_REPEATS
-    for model in values["models"].values():
-        if "max_iter" in model.get("params", {}) and model["estimator"].startswith("hist_gradient_boosting"):
-            model["params"]["max_iter"] = FAST_BOOSTING_ITERATIONS
+    models = {}
+    for name, model in config.models.items():
+        if "max_iter" in model.params and model.estimator.startswith("hist_gradient_boosting"):
+            model = replace(model, params={**model.params, "max_iter": FAST_BOOSTING_ITERATIONS})
+        models[name] = model
     reference = faster(config.reference) if config.reference is not None else None
-    return replace(config, values=values, reference=reference)
+    return replace(config, cv=replace(config.cv, n_repeats=FAST_REPEATS), models=models, reference=reference)
 
 
 def synthetic_flex_table() -> pd.DataFrame:
@@ -86,12 +84,12 @@ def synthetic_flex_table() -> pd.DataFrame:
 
 @pytest.fixture(scope="session")
 def outcome_config() -> ExperimentConfig:
-    return faster(load_config(OUTCOME_CONFIG))
+    return faster(load_experiment(OUTCOME_CONFIG))
 
 
 @pytest.fixture(scope="session")
 def sensitivity_config() -> ExperimentConfig:
-    return faster(load_config(SENSITIVITY_CONFIG))
+    return faster(load_experiment(SENSITIVITY_CONFIG))
 
 
 @pytest.fixture(scope="session")

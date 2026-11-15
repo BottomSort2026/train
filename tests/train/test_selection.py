@@ -3,12 +3,15 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from configs.training.config_training import MetricRule, Selection
 from flame.training.evaluate import classification_metrics, regression_metrics, select_model
 
 BASELINE = {"macro_f1": 0.80, "brier": 0.130}
+WORSE = {"macro_f1": 0.60, "brier": 0.300}
 
 
 def repeat_metrics(**models: dict) -> pd.DataFrame:
+    models.setdefault("logreg_calibrated", {key: WORSE[key] for key in next(iter(models.values()))})
     records = []
     for name, metrics in models.items():
         for repeat in range(3):
@@ -55,6 +58,8 @@ def test_comparison_is_paired_by_repeat(outcome_config):
         {"model": "logreg_spline", "repeat": 1, "macro_f1": 0.92, "brier": 0.09},
         {"model": "hgb", "repeat": 0, "macro_f1": 0.60, "brier": 0.30},
         {"model": "hgb", "repeat": 1, "macro_f1": 0.60, "brier": 0.30},
+        {"model": "logreg_calibrated", "repeat": 0, "macro_f1": 0.60, "brier": 0.30},
+        {"model": "logreg_calibrated", "repeat": 1, "macro_f1": 0.60, "brier": 0.30},
     ])
     selection = select_model(metrics, outcome_config)
     spline_f1 = next(item for item in selection["comparisons"]
@@ -66,17 +71,18 @@ def test_comparison_is_paired_by_repeat(outcome_config):
 
 
 def test_regression_rule_needs_a_strictly_lower_error(outcome_config, config_with):
-    config = config_with(outcome_config, selection={
-        "tie_breaker_metric": "mae", "tie_breaker_direction": "lower",
-        "must_beat": [{"metric": "mae", "direction": "lower"}]})
-    better = repeat_metrics(logreg={"mae": 0.10}, logreg_spline={"mae": 0.09}, hgb={"mae": 0.08})
-    equal = repeat_metrics(logreg={"mae": 0.10}, logreg_spline={"mae": 0.10}, hgb={"mae": 0.11})
+    config = config_with(outcome_config, selection=Selection(
+        tie_breaker_metric="mae", tie_breaker_direction="lower", must_beat=(MetricRule("mae", "lower"),)))
+    better = repeat_metrics(logreg={"mae": 0.10}, logreg_spline={"mae": 0.09}, hgb={"mae": 0.08},
+                            logreg_calibrated={"mae": 0.12})
+    equal = repeat_metrics(logreg={"mae": 0.10}, logreg_spline={"mae": 0.10}, hgb={"mae": 0.11},
+                           logreg_calibrated={"mae": 0.12})
     assert select_model(better, config)["selected"] == "hgb"
     assert select_model(equal, config)["selected"] == "logreg"
 
 
 def test_classification_metrics_follow_the_decision_threshold(outcome_config):
-    target = outcome_config.section("target")
+    target = outcome_config.target
     truth = pd.Series(["extinction", "extinction", "no_extinction", "no_extinction"])
     metrics = classification_metrics(truth, pd.Series([0.9, 0.5, 0.4, 0.6]).to_numpy(), target)
     assert metrics["recall_extinction"] == pytest.approx(1.0)
@@ -86,7 +92,7 @@ def test_classification_metrics_follow_the_decision_threshold(outcome_config):
 
 
 def test_metrics_of_a_single_class_fold_are_marked_undefined(outcome_config):
-    target = outcome_config.section("target")
+    target = outcome_config.target
     truth = pd.Series(["extinction", "extinction"])
     metrics = classification_metrics(truth, pd.Series([0.9, 0.2]).to_numpy(), target)
     assert pd.isna(metrics["roc_auc"])

@@ -2,14 +2,20 @@ name: flame-train
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.12                  # the same minor version as the engine image (python:3.12-slim)
   - pip
-  # --- training (model) ---
+  # --- shared: every config is YAML (configs/corpus/corpus.yml, configs/training/*.yml) ---
+  - pyyaml
+  # --- training (python main.py train ...) ---
+  # The engine service loads the exported artifacts (model.joblib, support.joblib), so it must use the SAME
+  # scikit-learn and numpy versions. Every export records the versions it used in model_info.json["versions"]
+  # (python, scikit-learn, numpy, pandas, scipy, joblib): copy those into engine/requirements.txt.
   - numpy=2.3.5
   - pandas=2.3.3
   - scikit-learn=1.7.2
-  # --- corpus ---
-  - pyyaml
+  - scipy                        # installed with scikit-learn anyway; listed because model_info.json records it
+  - joblib                       # writes and reads the artifacts; same reason
+  # --- corpus (python main.py corpus ...) ---
   # PyTorch, sentence-transformers and PyMuPDF come from conda-forge (not pip), so every compiled module
   # shares the environment's libstdc++. Mixing pip-installed torch with conda-forge scipy caused
   # "CXXABI_1.3.15 not found". `pytorch=*=cpu*` selects the CPU-only build.
@@ -17,7 +23,7 @@ dependencies:
   - pytorch=*=cpu*
   - sentence-transformers
   - pymupdf
-  # --- tests ---
+  # --- tests (python -m pytest tests/train tests/corpus) ---
   - pytest
   - pip:
       - sqlite-vec   # pure C extension, no C++ runtime involved

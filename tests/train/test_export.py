@@ -48,7 +48,7 @@ def test_ranges_are_rounded_outward_without_float_artifacts(value, upward, expec
 def test_artifact_directory_has_every_file(synthetic_export):
     names = sorted(path.name for path in synthetic_export["artifact_dir"].iterdir())
     assert names == ["model.joblib", "model_info.json", "support.joblib", "support_reference.csv"]
-    assert synthetic_export["artifact_dir"].name == "flex-outcome-0.1"
+    assert synthetic_export["artifact_dir"].name == "flex-outcome-0.2"
 
 
 def test_model_info_has_the_required_fields(synthetic_export):
@@ -56,7 +56,8 @@ def test_model_info_has_the_required_fields(synthetic_export):
     assert list(info) == INFO_FIELDS
     assert info["algorithm"]["name"] == synthetic_export["selected"]
     assert info["cv"]["baseline"] == "logreg"
-    assert sorted(info["versions"]) == ["numpy", "pandas", "python", "scikit-learn"]
+    assert sorted(info["versions"]) == ["joblib", "numpy", "pandas", "python", "scikit-learn", "scipy"]
+    assert info["support"]["nearest_test_conditions"] == ["fuel", "pressure_atm", "o2", "co2", "he", "d0_mm"]
     assert sorted(info["support"]["thresholds"]) == ["heptane", "methanol"]
     assert info["constraints"] == [{"kind": "max_sum", "columns": ["o2", "co2", "he"], "max": 1.0}]
 
@@ -99,7 +100,7 @@ def test_artifact_loads_in_a_clean_interpreter_without_the_training_code(synthet
 def test_reports_are_written_next_to_the_artifact(synthetic_export):
     card = synthetic_export["model_card"].read_text(encoding="utf-8")
     evaluation = synthetic_export["evaluation_report"].read_text(encoding="utf-8")
-    assert synthetic_export["model_card"].name == "flex-outcome-0.1_model_card.md"
+    assert synthetic_export["model_card"].name == "flex-outcome-0.2_model_card.md"
     assert synthetic_export["evaluation_report"].name == "flex-outcome_evaluation.md"
     assert "## Limitations" in card and "## Reference queries" in card and "## Reproducibility" in card
     assert "## Paired comparison with the baseline" in evaluation
@@ -114,7 +115,7 @@ def test_reports_and_model_info_are_utf8_with_unix_line_endings(synthetic_export
 
 
 def test_report_paths_use_forward_slashes(outcome_config):
-    assert display_path(outcome_config.path) == "configs/training/flex_outcome.toml"
+    assert display_path(outcome_config.path) == "configs/training/flex_outcome.yml"
 
 
 def test_sensitivity_config_is_never_exported(synthetic_table, synthetic_data, sensitivity_config, tmp_path):
@@ -135,9 +136,9 @@ def test_two_evaluations_give_identical_metrics_and_reports(synthetic_data, outc
 
 def test_every_model_is_scored_on_every_fold(synthetic_data, outcome_config):
     evaluation = evaluate_models(synthetic_data, outcome_config)
-    cv = outcome_config.section("cv")
+    cv = outcome_config.cv
     counts = evaluation.fold_metrics.groupby("model").size()
-    assert counts.to_dict() == {name: cv["n_splits"] * cv["n_repeats"] for name in outcome_config.section("models")}
+    assert counts.to_dict() == {name: cv.n_splits * cv.n_repeats for name in outcome_config.models}
     assert evaluation.metric_names == ["macro_f1", "recall_extinction", "recall_no_extinction", "brier", "roc_auc"]
     per_repeat = evaluation.predictions.groupby(["model", "repeat"])["row"].nunique()
     assert (per_repeat == len(synthetic_data.rows)).all()

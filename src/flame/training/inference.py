@@ -97,13 +97,24 @@ def predict_outputs(bundle: dict[str, Any], feature_row: pd.DataFrame,
     return outputs, None
 
 
+def condition_value(value: Any) -> Any:
+    if pd.isna(value):
+        return None
+    if isinstance(value, (int, float, np.number)) and not isinstance(value, (bool, np.bool_)):
+        return float(value)
+    return str(value)
+
+
 def nearest_tests(bundle: dict[str, Any], support: dict[str, Any]) -> list[dict[str, Any]]:
     reference = bundle["reference"]
     fields = bundle["info"]["support"]["nearest_test_fields"]
+    conditions = bundle["info"]["support"].get("nearest_test_conditions", [])
     tests = []
     for row, distance in zip(support["nearest_reference_rows"], support["nearest_distances"]):
         record = reference.iloc[row]
         test = {field: (None if pd.isna(record[field]) else str(record[field])) for field in fields}
+        if conditions:
+            test["conditions"] = {name: condition_value(record[name]) for name in conditions}
         tests.append({**test, "distance": distance})
     return tests
 

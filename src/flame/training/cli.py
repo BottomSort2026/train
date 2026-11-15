@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-DEFAULT_SENSITIVITY_CONFIG = "configs/training/flex_outcome_sensitivity.toml"
+DEFAULT_SENSITIVITY_CONFIG = "flex-outcome-sensitivity"
+CONFIG_HELP = "Experiment name (e.g. flex-outcome) or YAML file (e.g. configs/training/flex_outcome.yml)"
 
 
 def _fetch_flex(args: argparse.Namespace) -> int:
@@ -27,12 +28,12 @@ def _check_flex(args: argparse.Namespace) -> int:
 
 
 def _evaluate(args: argparse.Namespace) -> int:
-    from flame.training.config import load_config
+    from configs.training.config_training import get_experiment
     from flame.training.datasets import load_training_data
     from flame.training.evaluate import evaluate_models
     from flame.training.export import REPORTS_ROOT
     from flame.training.reporting import write_evaluation_report
-    config = load_config(args.config)
+    config = get_experiment(args.config)
     if config.role != "publishable":
         raise SystemExit(f"{config.name} is a {config.role} config; run it with: train compare-targets")
     data = load_training_data(config)
@@ -44,9 +45,9 @@ def _evaluate(args: argparse.Namespace) -> int:
 
 
 def _export(args: argparse.Namespace) -> int:
-    from flame.training.config import load_config
+    from configs.training.config_training import get_experiment
     from flame.training.export import export_experiment
-    config = load_config(args.config)
+    config = get_experiment(args.config)
     if config.role != "publishable":
         raise SystemExit(f"{config.name} is a {config.role} config and is never exported")
     result = export_experiment(config)
@@ -57,9 +58,9 @@ def _export(args: argparse.Namespace) -> int:
 
 
 def _compare_targets(args: argparse.Namespace) -> int:
-    from flame.training.config import load_config
+    from configs.training.config_training import get_experiment
     from flame.training.sensitivity import compare_targets
-    result = compare_targets(load_config(args.config))
+    result = compare_targets(get_experiment(args.config))
     verdict = "consistent" if result["consistent"] else "not consistent"
     print(f"ROC-AUC difference {result['auc_delta']:.4f}, Spearman {result['spearman']:.4f}: {verdict}")
     print(f"Wrote {result['report']}")
@@ -78,13 +79,13 @@ def register_commands(subparsers: argparse._SubParsersAction) -> None:
     check.set_defaults(func=_check_flex)
 
     evaluate = subparsers.add_parser("evaluate", help="Grouped cross-validation of the baseline and candidates")
-    evaluate.add_argument("--config", required=True, help="Experiment TOML, e.g. configs/training/flex_outcome.toml")
+    evaluate.add_argument("--config", required=True, help=CONFIG_HELP)
     evaluate.set_defaults(func=_evaluate)
 
     export = subparsers.add_parser("export", help="Evaluate, select, refit on all rows and write the artifact")
-    export.add_argument("--config", required=True, help="Experiment TOML, e.g. configs/training/flex_outcome.toml")
+    export.add_argument("--config", required=True, help=CONFIG_HELP)
     export.set_defaults(func=_export)
 
     compare = subparsers.add_parser("compare-targets", help="Sensitivity check of the target definition")
-    compare.add_argument("--config", default=DEFAULT_SENSITIVITY_CONFIG, help="Sensitivity TOML")
+    compare.add_argument("--config", default=DEFAULT_SENSITIVITY_CONFIG, help=f"Sensitivity experiment. {CONFIG_HELP}")
     compare.set_defaults(func=_compare_targets)

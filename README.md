@@ -20,6 +20,32 @@ python main.py train --help
 python main.py corpus --help
 ```
 
+## Models (FLEX, PSI-69)
+
+Two models, each with a k-NN that finds the real ISS tests closest to a query:
+
+| Experiment | Question | Config |
+|---|---|---|
+| `flex-outcome` | Does the droplet flame go out on its own? (`extinction` / `no_extinction`) | `configs/training/flex_outcome.yml` |
+| `flex-extinction` | If it goes out, what is D_ext/D0? | `configs/training/flex_extinction.yml` |
+| `flex-outcome-sensitivity` | Sensitivity check of the outcome target (never exported) | `configs/training/flex_outcome_sensitivity.yml` |
+
+One YAML per experiment, loaded once into frozen dataclasses by `configs/training/config_training.py` (PyYAML only;
+unknown keys and invalid values fail at load time). `--config` takes the experiment name or the YAML path.
+
+```bash
+python main.py train fetch-flex                       # FLEX table + TestSheets from PSI (~0.3 MB)
+python main.py train prepare-flex                     # data/processed/flex_tests.csv + manifest
+python main.py train check-flex                       # reports/flex_data_check.md
+python main.py train export --config flex-outcome     # evaluate, select, refit -> artifacts/models/flex-outcome-<version>/
+python main.py train export --config flex-extinction
+python main.py train compare-targets                  # reports/flex-outcome_target_sensitivity.md
+python -m pytest tests/train                          # unit tests; integration tests need prepare-flex first
+```
+
+Each artifact folder (`model.joblib`, `support.joblib`, `support_reference.csv`, `model_info.json`) is what the
+engine service loads. `model_info.json` records the library versions engine must match.
+
 ## Corpus (`corpus.db`)
 
 Configuration: `configs/corpus/corpus.yml`, loaded once into dataclasses by `configs/corpus/config_corpus.py`.

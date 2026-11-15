@@ -1,0 +1,167 @@
+# Experimento flex-extinction: si la llama se apaga, ¿con qué diámetro queda la gota? (regresión de Dext/D0).
+# Lo leen `python main.py train evaluate|export --config flex-extinction` a través de
+# configs/training/config_training.py, que lo carga una vez en dataclasses inmutables.
+# Para cambiar el modelo se cambia este archivo, no el código. Decisiones: reports/decision_log.md.
+
+experiment:
+  name: flex-extinction
+  version: "0.2"                 # entre comillas: YAML lo leería como número
+  role: publishable
+  task: regression
+  decisions: [D-03, D-04, D-05, D-07, D-08, D-09]
+
+# --- Datos de entrada: la tabla FLEX limpia (python main.py train prepare-flex). ---
+dataset:
+  name: flex_tests
+  accession: PSI-69
+  path: data/processed/flex_tests.csv
+  group_column: atmosphere_id
+  row_key: table_row
+  id_columns: [cir_id, testsheet_id, test_end]
+  # Los filtros de D-03 más los de D-08: solo tests que se extinguieron y tienen el diámetro medido.
+  exclusions:
+    - {name: duplicate_test,              column: duplicate_of, rule: not_null}
+    - {name: missing_initial_diameter,    column: d0_mm,        rule: is_null}
+    - {name: high_pressure,               column: high_pressure, rule: is_true}
+    - {name: unknown_fiber,               column: fiber,        rule: is_null}
+    - {name: not_extinction,              column: test_end,     rule: not_equals, value: extinction}
+    - {name: missing_extinction_diameter, column: dext_mm,      rule: is_null}
+
+# --- Variable objetivo (D-08, T-16): Dext/D0, recortada a [0, 1]. ---
+target:
+  column: dext_over_d0
+  output: extinction_diameter_ratio
+  prediction_bounds: [0.0, 1.0]
+  scaled_outputs:
+    - {name: extinction_diameter_mm, input: droplet_d0_mm}   # razón x D0 = diámetro en mm
+
+# --- Columnas que recibe el pipeline (D-04). ---
+features:
+  categorical: [fuel]
+  numeric: [pressure_atm, o2, co2, he, d0_mm]
+  boolean: [fiber]
+  products:
+    - {name: po2, columns: [o2, pressure_atm]}
+
+# --- Modelos (D-08): el candidato se publica solo si su MAE pareado es menor que el del baseline. ---
+models:
+  ridge:
+    role: baseline
+    estimator: ridge
+    params: {alpha: 1.0}
+  hgb:
+    role: candidate
+    estimator: hist_gradient_boosting_regressor
+    params:
+      max_depth: 3
+      max_iter: 150
+      learning_rate: 0.05
+      min_samples_leaf: 15
+      l2_regularization: 1.0
+      random_state: 0
+
+# --- Validación cruzada agrupada y repetida (D-05); estratifica en 4 cuantiles del objetivo (T-16). ---
+cv:
+  n_splits: 5
+  n_repeats: 10
+  shuffle: true
+  seed: 20261114
+  stratify_bins: 4
+
+selection:
+  tie_breaker_metric: mae
+  tie_breaker_direction: lower
+  must_beat:
+    - {metric: mae, direction: lower}
+
+# --- k-NN de respaldo (D-07). Sin probabilidad: la confianza usa solo el respaldo. ---
+support:
+  columns: [pressure_atm, o2, co2, he, d0_mm]
+  partition_column: fuel
+  range_percentile: 95
+  nearest_k: 5
+  low_confidence_below_support: 3
+  high_confidence_min_support: 5
+
+# --- Tabla de error por región en el reporte de evaluación. ---
+evaluation:
+  region_columns: [suppressant]
+  region_round:
+    pressure_atm: 1              # la presión se redondea a 1 decimal para agrupar
+
+interface:
+  range_decimals: 2
+  input_order: [fuel, pressure_atm, o2, suppressant, suppressant_fraction, droplet_d0_mm]
+  fixed_inputs:
+    fiber: false
+  composition:
+    columns: [o2, co2, he]
+    max_sum: 1.0
+  selector:
+    input: suppressant
+    value_input: suppressant_fraction
+    source_column: suppressant
+    empty_value: none
+    unit: mole fraction
+    columns:
+      co2: co2
+      he: he
+  direct_inputs:
+    - {name: fuel,          column: fuel,         type: enum}
+    - {name: pressure_atm,  column: pressure_atm, type: float, unit: atm}
+    - {name: o2,            column: o2,           type: float, unit: mole fraction}
+    - {name: droplet_d0_mm, column: d0_mm,        type: float, unit: mm}
+
+# --- Contenido del model card (en inglés: sale en los reportes). ---
+report:
+  pressure_level_decimals: 1
+  intended_use: >-
+    Estimate, for the simulator and the chatbot, how early the visible flame of a burning fuel droplet goes out in a
+    given microgravity atmosphere, as the droplet diameter at extinction divided by its initial diameter. A ratio
+    near 1 means the flame barely outlived ignition; a small ratio means the droplet burned almost completely. It
+    supports engineering judgment and does not replace material certification.
+  limitations:
+    - >-
+      Conditional model: it describes the tests whose visible flame went out. Whether the flame goes out at all is
+      the question of flex-outcome, and this model must be read together with it (decision D-08).
+    - "Microgravity only: gravity is not an input, and the prediction must not change with any gravity control."
+    - >-
+      Extinction means extinction of the visible flame. Heptane droplets can keep burning as a dim cool flame after
+      the visible flame goes out, so a heptane extinction diameter is not the end of all burning.
+    - >-
+      Extinction diameters were measured only while the droplet stayed in the camera view. Tests without a measured
+      diameter are excluded, and the diameters that appear only in the TestSheets are not used (decision D-04).
+    - >-
+      Pressure was tested at two levels only (see the coverage facts). The per-input limits accept any pressure
+      between the two levels, and the joint range check only rejects pressures far from both of them.
+    - >-
+      Suppressants (CO2, He) were tested only at moderate oxygen levels. No flame went out in the Moon-like region,
+      so this model has no training rows there.
+    - "Fiber-supported tests are used for training, but every prediction is made for a free droplet."
+    - "Tests above the pressure limit are excluded: there, pressure is confounded with a single CO2 mixture."
+    - "Predictions are clipped to the physical range of the ratio."
+  reference_queries:
+    - name: iss_like_air
+      inputs:
+        fuel: methanol
+        pressure_atm: 1.0
+        o2: 0.21
+        suppressant: none
+        suppressant_fraction: 0.0
+        droplet_d0_mm: 3.0
+    - name: co2_diluted_low_pressure
+      inputs:
+        fuel: methanol
+        pressure_atm: 0.7
+        o2: 0.21
+        suppressant: co2
+        suppressant_fraction: 0.3
+        droplet_d0_mm: 3.5
+    - name: moon_like_no_suppressant
+      inputs:
+        fuel: methanol
+        pressure_atm: 0.69
+        o2: 0.34
+        suppressant: none
+        suppressant_fraction: 0.0
+        droplet_d0_mm: 3.5

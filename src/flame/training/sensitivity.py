@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-from flame.training.config import ExperimentConfig
+from configs.training.config_training import ExperimentConfig
 from flame.training.datasets import TrainingData, build_training_data, load_source_table
 from flame.training.evaluate import evaluate_models, evaluation_splits
 from flame.training.export import REPORTS_ROOT
@@ -56,8 +56,8 @@ def roc_auc_per_repeat(predictions: pd.DataFrame, is_positive: np.ndarray) -> pd
 def compare_targets_from_data(config: ExperimentConfig, reference_data: TrainingData,
                               sensitivity_data: TrainingData) -> dict[str, Any]:
     reference = config.reference
-    comparison = config.section("comparison")
-    positive = config.section("target")["positive_class"]
+    comparison = config.comparison
+    positive = config.target.positive_class
     to_reference = reference_positions(reference_data, sensitivity_data)
     is_positive = (sensitivity_data.target.to_numpy() == positive).astype(float)
 
@@ -73,7 +73,7 @@ def compare_targets_from_data(config: ExperimentConfig, reference_data: Training
     sensitivity_auc = roc_auc_per_repeat(sensitivity_shared, is_positive)
     auc_delta = float(reference_auc.mean() - sensitivity_auc.mean())
 
-    seed = reference.section("cv")["seed"]
+    seed = reference.cv.seed
     reference_model = fit_model(model_name, reference, reference_data.features, reference_data.target,
                                 reference_data.groups, seed)
     sensitivity_model = fit_model(model_name, config, sensitivity_data.features, sensitivity_data.target,
@@ -94,8 +94,8 @@ def compare_targets_from_data(config: ExperimentConfig, reference_data: Training
         "sensitivity_auc_text": mean_std(sensitivity_auc),
         "auc_delta": auc_delta,
         "spearman": spearman,
-        "consistent": bool(abs(auc_delta) <= comparison["max_abs_roc_auc_delta"]
-                           and spearman >= comparison["min_spearman"]),
+        "consistent": bool(abs(auc_delta) <= comparison.max_abs_roc_auc_delta
+                           and spearman >= comparison.min_spearman),
     }
 
 

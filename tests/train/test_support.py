@@ -20,7 +20,7 @@ def pairwise_distances(points: np.ndarray) -> np.ndarray:
 
 @pytest.fixture(scope="module")
 def support_bundle(synthetic_data, outcome_config):
-    return fit_support(synthetic_data.features, outcome_config.section("support"))
+    return fit_support(synthetic_data.features, outcome_config.support)
 
 
 def test_one_index_is_built_per_fuel_over_the_decided_columns(support_bundle):
@@ -31,7 +31,7 @@ def test_one_index_is_built_per_fuel_over_the_decided_columns(support_bundle):
 
 def test_threshold_is_the_percentile_of_distances_to_the_nearest_other_test(synthetic_data, support_bundle,
                                                                            outcome_config):
-    percentile = outcome_config.section("support")["range_percentile"]
+    percentile = outcome_config.support.range_percentile
     for fuel, partition in support_bundle["partitions"].items():
         distances = pairwise_distances(standardized_partition(synthetic_data.features, support_bundle, fuel))
         np.fill_diagonal(distances, np.inf)
@@ -77,7 +77,7 @@ def test_untested_combination_inside_every_single_range_is_outside_the_joint_ran
     mixture = np.vstack([high_oxygen_no_suppressant, low_oxygen_with_co2])
     features = pd.DataFrame({"fuel": "methanol", "pressure_atm": 0.7 + rng.normal(0, 0.002, 40), "o2": mixture[:, 0],
                              "co2": mixture[:, 1], "he": 0.0, "d0_mm": 3.0 + rng.normal(0, 0.05, 40)})
-    bundle = fit_support(features, outcome_config.section("support"))
+    bundle = fit_support(features, outcome_config.support)
     tested = features.iloc[[0]]
     untested = tested.assign(o2=0.34, co2=0.30)
     assert features["o2"].min() <= 0.34 <= features["o2"].max() + 0.01

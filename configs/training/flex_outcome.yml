@@ -1,0 +1,193 @@
+# Experimento flex-outcome: ¿la llama de una gota se apaga sola? (clasificación binaria).
+# Lo leen `python main.py train evaluate|export --config flex-outcome` a través de
+# configs/training/config_training.py, que lo carga una vez en dataclasses inmutables.
+# Para cambiar el modelo se cambia este archivo, no el código. Decisiones: reports/decision_log.md.
+
+experiment:
+  name: flex-outcome
+  version: "0.2"                 # 0.2: nuevo candidato logreg_calibrated (T-23). Entre comillas: si no, es un número
+  role: publishable              # publishable (se exporta) o sensitivity (solo se compara, nunca se exporta)
+  task: classification           # classification o regression
+  decisions: [D-01, D-03, D-04, D-05, D-06, D-07, D-09]
+
+# --- Datos de entrada: la tabla FLEX limpia (python main.py train prepare-flex). ---
+dataset:
+  name: flex_tests
+  accession: PSI-69
+  path: data/processed/flex_tests.csv   # relativa a la raíz del repo
+  group_column: atmosphere_id           # una misma atmósfera nunca queda en entrenamiento y prueba a la vez (D-05)
+  row_key: table_row
+  id_columns: [cir_id, testsheet_id, test_end]   # identifican cada test en nearest_tests y support_reference.csv
+  # Filtros en orden; una fila que cumple dos filtros se cuenta solo en el primero (T-03). D-03.
+  exclusions:
+    - {name: duplicate_test,           column: duplicate_of, rule: not_null}
+    - {name: missing_initial_diameter, column: d0_mm,        rule: is_null}
+    - {name: high_pressure,            column: high_pressure, rule: is_true}
+    - {name: unknown_fiber,            column: fiber,        rule: is_null}
+
+# --- Variable objetivo (D-01): disrupción y completación cuentan como no_extinction. ---
+target:
+  column: test_end
+  positive_class: extinction
+  decision_threshold: 0.5        # la clase es extinction si su probabilidad es >= 0.5 (T-09)
+  class_map:
+    extinction: extinction
+    disruption: no_extinction
+    completion: no_extinction
+
+# --- Columnas que recibe el pipeline (D-04). N2 es el resto de la mezcla. ---
+features:
+  categorical: [fuel]
+  numeric: [pressure_atm, o2, co2, he, d0_mm]
+  boolean: [fiber]
+  products:
+    - {name: po2, columns: [o2, pressure_atm]}   # presión parcial de O2 = o2 x pressure_atm
+
+# --- Modelos comparados con la misma validación cruzada (D-06). ---
+# Exactamente uno es baseline. Un candidato se publica solo si supera al baseline en cada métrica de
+# selection.must_beat. `params` se entrega tal cual al estimador de scikit-learn.
+models:
+  logreg:
+    role: baseline
+    estimator: logistic_regression
+    params: {C: 1.0, class_weight: balanced, max_iter: 1000}
+  logreg_spline:
+    role: candidate
+    estimator: logistic_regression
+    spline: {columns: [o2, d0_mm, co2, he], n_knots: 4, degree: 3}   # la presión sigue lineal
+    params: {C: 1.0, class_weight: balanced, max_iter: 1000}
+  hgb:
+    role: candidate
+    estimator: hist_gradient_boosting_classifier
+    calibrated: true
+    params:
+      max_depth: 3
+      max_iter: 150
+      learning_rate: 0.05
+      min_samples_leaf: 15
+      l2_regularization: 1.0
+      class_weight: balanced
+      random_state: 0
+  # El baseline con calibración sigmoide agrupada. Responde a O-07: los pesos balanceados hacen que las
+  # probabilidades describan una población balanceada, y el frontend y el LLM las muestran. La regla de
+  # selección no cambia: se publica solo si supera al baseline en macro_f1 y en brier (T-23).
+  logreg_calibrated:
+    role: candidate
+    estimator: logistic_regression
+    calibrated: true
+    params: {C: 1.0, class_weight: balanced, max_iter: 1000}
+
+# --- Validación cruzada agrupada y repetida (D-05). ---
+cv:
+  n_splits: 5
+  n_repeats: 10
+  shuffle: true
+  seed: 20261114
+
+# --- Calibración de los modelos con calibrated: true. Los grupos tampoco se mezclan aquí (T-06). ---
+calibration:
+  method: sigmoid
+  n_splits: 3
+
+# --- Regla de selección (D-06, T-04). ---
+selection:
+  tie_breaker_metric: brier      # si varios candidatos califican, gana el de menor brier
+  tie_breaker_direction: lower
+  must_beat:
+    - {metric: macro_f1, direction: higher}
+    - {metric: brier,    direction: lower}
+
+# --- k-NN de respaldo: tests reales parecidos a la consulta (D-07, T-10). ---
+support:
+  columns: [pressure_atm, o2, co2, he, d0_mm]   # espacio estandarizado; fiber no entra
+  partition_column: fuel                       # un índice por combustible
+  range_percentile: 95                         # umbral "cerca" = percentil 95 de la distancia al test vecino
+  nearest_k: 5                                 # tests más cercanos que se devuelven
+  low_confidence_below_support: 3              # confianza low si hay menos de 3 tests cerca
+  high_confidence_min_support: 5               # confianza high exige al menos 5 tests cerca...
+  high_confidence_min_probability: 0.7         # ...y que la clase predicha tenga probabilidad >= 0.7
+
+# --- Interfaz expuesta a engine / frontend (D-04). ---
+interface:
+  range_decimals: 2              # los rangos publicados se redondean hacia afuera (T-11)
+  input_order: [fuel, pressure_atm, o2, suppressant, suppressant_fraction, droplet_d0_mm]
+  fixed_inputs:
+    fiber: false                 # toda predicción es para una gota libre
+  composition:
+    columns: [o2, co2, he]
+    max_sum: 1.0
+  # El usuario elige un supresor (none / co2 / he) y su fracción, que va a la columna correspondiente.
+  selector:
+    input: suppressant
+    value_input: suppressant_fraction
+    source_column: suppressant
+    empty_value: none
+    unit: mole fraction
+    columns:
+      co2: co2
+      he: he
+  direct_inputs:
+    - {name: fuel,          column: fuel,         type: enum}
+    - {name: pressure_atm,  column: pressure_atm, type: float, unit: atm}
+    - {name: o2,            column: o2,           type: float, unit: mole fraction}
+    - {name: droplet_d0_mm, column: d0_mm,        type: float, unit: mm}
+
+# --- Contenido del model card (en inglés: sale en los reportes). ---
+report:
+  pressure_level_decimals: 1
+  intended_use: >-
+    Estimate, for the simulator and the chatbot, whether the visible flame of a single burning fuel droplet goes
+    out on its own in a given microgravity atmosphere, within the conditions FLEX tested. It supports engineering
+    judgment and does not replace material certification.
+  limitations:
+    - "Microgravity only: gravity is not an input, and the prediction must not change with any gravity control."
+    - >-
+      The class no_extinction joins tests that burned to completion and tests where the droplet broke apart or left
+      its support fiber (disruption). A disruption early in the burn can hide an extinction that would have happened
+      later (decision D-01).
+    - >-
+      Extinction means extinction of the visible flame. Heptane droplets can keep burning as a dim cool flame after
+      the visible flame goes out.
+    - >-
+      Pressure was tested at two levels only (see the coverage facts). The per-input limits accept any pressure
+      between the two levels, and the joint range check only rejects pressures far from both of them.
+    - >-
+      Suppressants (CO2, He) were tested only at moderate oxygen levels. The Moon-like region has tests without
+      suppressant only.
+    - "Fiber-supported tests are used for training, but every prediction is made for a free droplet."
+    - "Tests above the pressure limit are excluded: there, pressure is confounded with a single CO2 mixture."
+    - "The slow imposed flow used in some tests (droplet translation) is not an input."
+  # Consultas de prueba: sus respuestas se imprimen en el model card (T-15).
+  reference_queries:
+    - name: moon_like_with_co2
+      inputs:
+        fuel: methanol
+        pressure_atm: 0.7
+        o2: 0.34
+        suppressant: co2
+        suppressant_fraction: 0.2
+        droplet_d0_mm: 3.5
+    - name: iss_like_air
+      inputs:
+        fuel: methanol
+        pressure_atm: 1.0
+        o2: 0.21
+        suppressant: none
+        suppressant_fraction: 0.0
+        droplet_d0_mm: 3.0
+    - name: moon_like_no_suppressant
+      inputs:
+        fuel: methanol
+        pressure_atm: 0.69
+        o2: 0.34
+        suppressant: none
+        suppressant_fraction: 0.0
+        droplet_d0_mm: 3.5
+    - name: between_pressure_levels
+      inputs:
+        fuel: methanol
+        pressure_atm: 0.85
+        o2: 0.21
+        suppressant: none
+        suppressant_fraction: 0.0
+        droplet_d0_mm: 3.0

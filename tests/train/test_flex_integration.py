@@ -4,8 +4,8 @@ import json
 
 import pytest
 
+from configs.training.config_training import load_experiment as load_config
 from flame.training import flex_check, flex_data
-from flame.training.config import load_config
 from flame.training.datasets import load_training_data
 from flame.training.evaluate import evaluation_splits
 from flame.training.export import ARTIFACTS_ROOT, export_experiment
@@ -94,9 +94,9 @@ def test_moon_like_atmosphere_without_suppressant_is_in_range(flex_bundle):
 
 
 def test_published_artifact_was_trained_on_the_current_data():
-    info_path = ARTIFACTS_ROOT / "flex-outcome-0.1" / "model_info.json"
+    info_path = ARTIFACTS_ROOT / "flex-outcome-0.2" / "model_info.json"
     if not info_path.exists():
-        pytest.skip("artifacts/models/flex-outcome-0.1 has not been exported")
+        pytest.skip("artifacts/models/flex-outcome-0.2 has not been exported")
     manifest = json.loads(flex_data.MANIFEST.read_text(encoding="utf-8"))
     assert json.loads(info_path.read_text(encoding="utf-8"))["training_source"]["sha256"] == manifest["sha256"]
 

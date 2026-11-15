@@ -21,7 +21,7 @@ def test_response_has_the_contract_fields_and_types(synthetic_export, typical_in
     assert isinstance(response["support_n"], int)
     assert isinstance(response["nearest_tests"], list)
     assert response["confidence"] in ("low", "medium", "high")
-    assert response["model_version"] == "flex-outcome-0.1"
+    assert response["model_version"] == "flex-outcome-0.2"
     assert sorted(response["training_source"]) == ["accession", "dataset", "rows", "sha256"]
     assert json.loads(json.dumps(response)) == response
 
@@ -39,8 +39,21 @@ def test_probabilities_cover_both_classes_and_decide_the_outcome(synthetic_expor
 def test_nearest_tests_carry_ids_and_increasing_distances(synthetic_export, typical_inputs):
     tests = reference_predict(synthetic_export["bundle"], typical_inputs)["nearest_tests"]
     assert len(tests) == synthetic_export["bundle"]["info"]["support"]["nearest_k"]
-    assert all(sorted(test) == ["cir_id", "distance", "test_end", "testsheet_id"] for test in tests)
+    assert all(list(test) == ["cir_id", "testsheet_id", "test_end", "conditions", "distance"] for test in tests)
     assert [test["distance"] for test in tests] == sorted(test["distance"] for test in tests)
+
+
+def test_nearest_tests_carry_the_conditions_of_the_real_test(synthetic_export, synthetic_data, typical_inputs):
+    tests = reference_predict(synthetic_export["bundle"], typical_inputs)["nearest_tests"]
+    rows = synthetic_data.rows.set_index("cir_id")
+    for test in tests:
+        conditions = test["conditions"]
+        assert list(conditions) == ["fuel", "pressure_atm", "o2", "co2", "he", "d0_mm"]
+        assert conditions["fuel"] == typical_inputs["fuel"]
+        assert all(isinstance(conditions[name], float) for name in ("pressure_atm", "o2", "co2", "he", "d0_mm"))
+        assert conditions["o2"] == pytest.approx(float(rows.loc[test["cir_id"], "o2"]))
+        assert conditions["d0_mm"] == pytest.approx(float(rows.loc[test["cir_id"], "d0_mm"]))
+    assert json.loads(json.dumps(tests)) == tests
 
 
 @pytest.mark.parametrize(("suppressant", "fraction", "expected_co2", "expected_he"), [

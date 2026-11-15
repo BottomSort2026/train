@@ -12,9 +12,10 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import scipy
 import sklearn
 
-from flame.training.config import ExperimentConfig
+from configs.training.config_training import ExperimentConfig
 from flame.training.datasets import TrainingData, build_training_data, load_source_table
 from flame.training.evaluate import SELECTION_UNIT, Evaluation, evaluate_models
 from flame.training.flex_data import TRAIN_ROOT
@@ -28,7 +29,6 @@ ARTIFACTS_ROOT = TRAIN_ROOT / "artifacts" / "models"
 REPORTS_ROOT = TRAIN_ROOT / "reports"
 COMMON_OUTPUTS = ["in_tested_range", "out_of_range_fields", "support_n", "nearest_tests", "confidence",
                   "model_version", "training_source"]
-CONFIDENCE_KEYS = ("low_confidence_below_support", "high_confidence_min_support", "high_confidence_min_probability")
 
 
 def round_outward(value: float, decimals: int, upward: bool) -> float:
@@ -43,80 +43,84 @@ def tested_range(values: pd.Series, decimals: int) -> dict[str, float]:
 
 
 def describe_inputs(config: ExperimentConfig, data: TrainingData) -> dict[str, Any]:
-    interface = config.section("interface")
-    decimals = interface["range_decimals"]
+    interface = config.interface
+    decimals = interface.range_decimals
     fields: dict[str, Any] = {}
-    for item in interface["direct_inputs"]:
-        column = data.features[item["column"]]
-        if item["type"] == "enum":
-            fields[item["name"]] = {"type": "enum", "values": sorted(str(value) for value in column.unique())}
+    for item in interface.direct_inputs:
+        column = data.features[item.column]
+        if item.type == "enum":
+            fields[item.name] = {"type": "enum", "values": sorted(str(value) for value in column.unique())}
         else:
-            fields[item["name"]] = {"type": "float", **tested_range(column, decimals), "unit": item["unit"]}
-    selector = interface["selector"]
-    selected = data.rows[selector["source_column"]].astype(str)
-    known = {selector["empty_value"], *selector["columns"]}
+            fields[item.name] = {"type": "float", **tested_range(column, decimals), "unit": item.unit}
+    selector = interface.selector
+    selected = data.rows[selector.source_column].astype(str)
+    known = {selector.empty_value, *selector.columns}
     if not set(selected.unique()) <= known:
-        raise ValueError(f"{selector['source_column']} has values outside {sorted(known)}")
+        raise ValueError(f"{selector.source_column} has values outside {sorted(known)}")
     by_selector: dict[str, dict[str, float]] = {}
-    if (selected == selector["empty_value"]).any():
-        by_selector[selector["empty_value"]] = {"min": 0.0, "max": 0.0}
-    for value, column in selector["columns"].items():
+    if (selected == selector.empty_value).any():
+        by_selector[selector.empty_value] = {"min": 0.0, "max": 0.0}
+    for value, column in selector.columns.items():
         if (selected == value).any():
             by_selector[value] = tested_range(data.features.loc[selected == value, column], decimals)
-    fields[selector["input"]] = {"type": "enum", "values": list(by_selector)}
-    fields[selector["value_input"]] = {
+    fields[selector.input] = {"type": "enum", "values": list(by_selector)}
+    fields[selector.value_input] = {
         "type": "float",
         "min": min(limits["min"] for limits in by_selector.values()),
         "max": max(limits["max"] for limits in by_selector.values()),
-        "unit": selector["unit"],
+        "unit": selector.unit,
         "by_selector": by_selector,
     }
-    return {name: fields[name] for name in interface["input_order"]}
+    return {name: fields[name] for name in interface.input_order}
 
 
 def describe_input_mapping(config: ExperimentConfig) -> dict[str, Any]:
-    interface = config.section("interface")
-    selector = interface["selector"]
+    interface = config.interface
+    selector = interface.selector
     return {
-        "direct": {item["name"]: item["column"] for item in interface["direct_inputs"]},
-        "selector": {"input": selector["input"], "value_input": selector["value_input"],
-                     "empty_value": selector["empty_value"], "columns": dict(selector["columns"])},
+        "direct": {item.name: item.column for item in interface.direct_inputs},
+        "selector": {"input": selector.input, "value_input": selector.value_input,
+                     "empty_value": selector.empty_value, "columns": dict(selector.columns)},
     }
 
 
 def feature_dtypes(config: ExperimentConfig) -> dict[str, str]:
-    features = config.section("features")
-    kinds = {"categorical": "str", "numeric": "float", "boolean": "bool"}
-    return {column: kind for group, kind in kinds.items() for column in features[group]}
+    features = config.features
+    groups = (("str", features.categorical), ("float", features.numeric), ("bool", features.boolean))
+    return {column: kind for kind, columns in groups for column in columns}
 
 
 def describe_task(config: ExperimentConfig) -> dict[str, Any]:
-    target = config.section("target")
+    target = config.target
     if config.task == "classification":
         return {
-            "class_labels": sorted(set(target["class_map"].values())),
-            "positive_class": target["positive_class"],
-            "decision_threshold": target["decision_threshold"],
+            "class_labels": target.class_labels,
+            "positive_class": target.positive_class,
+            "decision_threshold": target.decision_threshold,
             "outputs": ["outcome", "probabilities", *COMMON_OUTPUTS],
         }
-    scaled = list(target.get("scaled_outputs", []))
+    scaled = [{"name": item.name, "input": item.input} for item in target.scaled_outputs]
     return {
-        "prediction_output": target["output"],
-        "prediction_bounds": target.get("prediction_bounds"),
+        "prediction_output": target.output,
+        "prediction_bounds": list(target.prediction_bounds) if target.prediction_bounds else None,
         "scaled_outputs": scaled,
-        "outputs": [target["output"], *[item["name"] for item in scaled], *COMMON_OUTPUTS],
+        "outputs": [target.output, *[item["name"] for item in scaled], *COMMON_OUTPUTS],
     }
 
 
 def describe_algorithm(config: ExperimentConfig, model_name: str) -> dict[str, Any]:
-    model = config.section("models")[model_name]
+    model = config.models[model_name]
+    spline = model.spline
+    calibration = config.calibration
     return {
         "name": model_name,
-        "estimator": ESTIMATORS[model["estimator"]].__name__,
-        "params": dict(model.get("params", {})),
-        "spline": model.get("spline"),
+        "estimator": ESTIMATORS[model.estimator].__name__,
+        "params": dict(model.params),
+        "spline": ({"columns": list(spline.columns), "n_knots": spline.n_knots, "degree": spline.degree}
+                   if spline else None),
         "calibrated": is_calibrated(model),
-        "calibration": dict(config.section("calibration")) if is_calibrated(model) else None,
+        "calibration": ({"method": calibration.method, "n_splits": calibration.n_splits}
+                        if is_calibrated(model) else None),
     }
 
 
@@ -128,11 +132,11 @@ def describe_target(config: ExperimentConfig, data: TrainingData) -> dict[str, A
 
 
 def describe_training_source(config: ExperimentConfig, data: TrainingData) -> dict[str, Any]:
-    dataset = config.section("dataset")
-    target_column = config.section("target")["column"]
+    dataset = config.dataset
+    target_column = config.target.column
     source = {
-        "dataset": dataset["name"],
-        "accession": dataset["accession"],
+        "dataset": dataset.name,
+        "accession": dataset.accession,
         "sha256": data.source_sha256,
         "source_rows": data.source_rows,
         "rows": int(len(data.rows)),
@@ -147,7 +151,7 @@ def describe_training_source(config: ExperimentConfig, data: TrainingData) -> di
 
 
 def describe_cv(config: ExperimentConfig, evaluation: Evaluation) -> dict[str, Any]:
-    cv = config.section("cv")
+    cv = config.cv
     metrics = {
         model: {metric: {"mean": float(rows[metric].mean()), "std": float(rows[metric].std(ddof=0))}
                 for metric in evaluation.metric_names}
@@ -155,11 +159,11 @@ def describe_cv(config: ExperimentConfig, evaluation: Evaluation) -> dict[str, A
     }
     return {
         "splitter": "StratifiedGroupKFold",
-        "group_column": config.section("dataset")["group_column"],
-        "n_splits": cv["n_splits"],
-        "n_repeats": cv["n_repeats"],
-        "shuffle": cv["shuffle"],
-        "seed": cv["seed"],
+        "group_column": config.dataset.group_column,
+        "n_splits": cv.n_splits,
+        "n_repeats": cv.n_repeats,
+        "shuffle": cv.shuffle,
+        "seed": cv.seed,
         "unit": SELECTION_UNIT,
         "baseline": evaluation.selection["baseline"],
         "selected": evaluation.selection["selected"],
@@ -169,15 +173,16 @@ def describe_cv(config: ExperimentConfig, evaluation: Evaluation) -> dict[str, A
 
 
 def describe_support(config: ExperimentConfig, data: TrainingData, support_bundle: dict[str, Any]) -> dict[str, Any]:
-    support = config.section("support")
+    support = config.support
     return {
-        "columns": list(support["columns"]),
-        "partition_column": support["partition_column"],
-        "range_percentile": support["range_percentile"],
-        "nearest_k": support["nearest_k"],
+        "columns": list(support.columns),
+        "partition_column": support.partition_column,
+        "range_percentile": support.range_percentile,
+        "nearest_k": support.nearest_k,
         "thresholds": support_thresholds(support_bundle),
         "nearest_test_fields": list(data.id_columns),
-        "confidence": {key: support[key] for key in CONFIDENCE_KEYS if key in support},
+        "nearest_test_conditions": [support.partition_column, *support.columns],
+        "confidence": support.confidence_rule(),
     }
 
 
@@ -194,7 +199,7 @@ def code_version() -> dict[str, Any] | None:
 
 def library_versions() -> dict[str, str]:
     return {"python": platform.python_version(), "scikit-learn": sklearn.__version__, "numpy": np.__version__,
-            "pandas": pd.__version__}
+            "pandas": pd.__version__, "scipy": scipy.__version__, "joblib": joblib.__version__}
 
 
 def json_ready(value: Any) -> Any:
@@ -213,8 +218,8 @@ def json_ready(value: Any) -> Any:
 
 def build_model_info(config: ExperimentConfig, data: TrainingData, evaluation: Evaluation,
                      support_bundle: dict[str, Any]) -> dict[str, Any]:
-    interface = config.section("interface")
-    composition = interface["composition"]
+    interface = config.interface
+    composition = interface.composition
     task = describe_task(config)
     outputs = task.pop("outputs")
     return json_ready({
@@ -224,8 +229,8 @@ def build_model_info(config: ExperimentConfig, data: TrainingData, evaluation: E
         **task,
         "inputs": describe_inputs(config, data),
         "input_mapping": describe_input_mapping(config),
-        "constraints": [{"kind": "max_sum", "columns": list(composition["columns"]), "max": composition["max_sum"]}],
-        "fixed_inputs": dict(interface["fixed_inputs"]),
+        "constraints": [{"kind": "max_sum", "columns": list(composition.columns), "max": composition.max_sum}],
+        "fixed_inputs": dict(interface.fixed_inputs),
         "feature_columns": config.feature_columns,
         "feature_dtypes": feature_dtypes(config),
         "outputs": outputs,
@@ -242,8 +247,8 @@ def build_model_info(config: ExperimentConfig, data: TrainingData, evaluation: E
 
 
 def support_reference(config: ExperimentConfig, data: TrainingData) -> pd.DataFrame:
-    support = config.section("support")
-    return pd.concat([data.ids, data.features[[support["partition_column"], *support["columns"]]]], axis=1)
+    support = config.support
+    return pd.concat([data.ids, data.features[[support.partition_column, *support.columns]]], axis=1)
 
 
 def write_artifact(artifact_dir: Path, pipeline: Any, support_bundle: dict[str, Any], reference: pd.DataFrame,
@@ -256,9 +261,8 @@ def write_artifact(artifact_dir: Path, pipeline: Any, support_bundle: dict[str, 
 
 
 def run_reference_queries(bundle: dict[str, Any], config: ExperimentConfig) -> list[dict[str, Any]]:
-    queries = config.section("report").get("reference_queries", [])
-    return [{"name": query["name"], "inputs": dict(query["inputs"]),
-             "result": reference_predict(bundle, dict(query["inputs"]))} for query in queries]
+    return [{"name": query.name, "inputs": dict(query.inputs), "result": reference_predict(bundle, dict(query.inputs))}
+            for query in config.report.reference_queries]
 
 
 def export_from_data(config: ExperimentConfig, data: TrainingData, source_table: pd.DataFrame,
@@ -268,8 +272,8 @@ def export_from_data(config: ExperimentConfig, data: TrainingData, source_table:
     evaluation = evaluate_models(data, config)
     evaluation_path = write_evaluation_report(config, data, evaluation, reports_root)
     selected = evaluation.selection["selected"]
-    pipeline = fit_model(selected, config, data.features, data.target, data.groups, config.section("cv")["seed"])
-    support_bundle = fit_support(data.features, config.section("support"))
+    pipeline = fit_model(selected, config, data.features, data.target, data.groups, config.cv.seed)
+    support_bundle = fit_support(data.features, config.support)
     info = build_model_info(config, data, evaluation, support_bundle)
     artifact_dir = artifacts_root / config.model_version
     write_artifact(artifact_dir, pipeline, support_bundle, support_reference(config, data), info)

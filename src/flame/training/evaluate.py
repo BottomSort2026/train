@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, mean_absolute_error, r2_score, roc_auc_score
 
-from flame.training.config import ExperimentConfig
+from configs.training.config_training import ExperimentConfig, Target
 from flame.training.datasets import TrainingData
 from flame.training.models import fit_model, predict_values
 from flame.training.splits import Split, repeated_group_splits, stratification_labels
@@ -24,15 +24,15 @@ class Evaluation:
     metric_names: list[str]
 
 
-def class_labels(target: dict[str, Any]) -> tuple[str, str]:
-    positive = target["positive_class"]
-    negative = next(label for label in sorted(set(target["class_map"].values())) if label != positive)
+def class_labels(target: Target) -> tuple[str, str]:
+    positive = target.positive_class
+    negative = next(label for label in target.class_labels if label != positive)
     return positive, negative
 
 
-def predicted_labels(positive_probability: np.ndarray, target: dict[str, Any]) -> np.ndarray:
+def predicted_labels(positive_probability: np.ndarray, target: Target) -> np.ndarray:
     positive, negative = class_labels(target)
-    return np.where(positive_probability >= target["decision_threshold"], positive, negative)
+    return np.where(positive_probability >= target.decision_threshold, positive, negative)
 
 
 def class_recall(truth: np.ndarray, predicted: np.ndarray, label: str) -> float:
@@ -40,7 +40,7 @@ def class_recall(truth: np.ndarray, predicted: np.ndarray, label: str) -> float:
     return float((predicted[members] == label).mean()) if members.any() else float("nan")
 
 
-def classification_metrics(truth: pd.Series, positive_probability: np.ndarray, target: dict[str, Any]) -> dict:
+def classification_metrics(truth: pd.Series, positive_probability: np.ndarray, target: Target) -> dict:
     positive, negative = class_labels(target)
     observed = truth.to_numpy()
     predicted = predicted_labels(positive_probability, target)
@@ -68,12 +68,12 @@ def regression_metrics(truth: pd.Series, predicted: np.ndarray) -> dict:
 
 def score_predictions(truth: pd.Series, predictions: np.ndarray, config: ExperimentConfig) -> dict:
     if config.task == "classification":
-        return classification_metrics(truth, predictions, config.section("target"))
+        return classification_metrics(truth, predictions, config.target)
     return regression_metrics(truth, predictions)
 
 
 def evaluation_splits(data: TrainingData, config: ExperimentConfig) -> list[Split]:
-    return repeated_group_splits(stratification_labels(data.target, config), data.groups, config.section("cv"))
+    return repeated_group_splits(stratification_labels(data.target, config), data.groups, config.cv)
 
 
 def pooled_repeat_metrics(predictions: pd.DataFrame, target: pd.Series, config: ExperimentConfig) -> pd.DataFrame:
@@ -106,23 +106,23 @@ def paired_comparison(repeat_metrics: pd.DataFrame, baseline: str, candidate: st
 
 
 def select_model(repeat_metrics: pd.DataFrame, config: ExperimentConfig) -> dict[str, Any]:
-    selection = config.section("selection")
+    selection = config.selection
     baseline = config.baseline_name
     comparisons = [
-        paired_comparison(repeat_metrics, baseline, candidate, rule["metric"], rule["direction"])
+        paired_comparison(repeat_metrics, baseline, candidate, rule.metric, rule.direction)
         for candidate in config.candidate_names
-        for rule in selection["must_beat"]
+        for rule in selection.must_beat
     ]
     qualifying = [
         candidate for candidate in config.candidate_names
         if all(item["beats_baseline"] for item in comparisons if item["candidate"] == candidate)
     ]
     if qualifying:
-        means = repeat_metrics.groupby("model")[selection["tie_breaker_metric"]].mean()
-        ordered = means[qualifying].sort_values(ascending=selection["tie_breaker_direction"] == "lower")
+        means = repeat_metrics.groupby("model")[selection.tie_breaker_metric].mean()
+        ordered = means[qualifying].sort_values(ascending=selection.tie_breaker_direction == "lower")
         selected = str(ordered.index[0])
         reason = (f"{selected} beats the baseline {baseline} on every required metric"
-                  + (f" and has the best {selection['tie_breaker_metric']} among {qualifying}"
+                  + (f" and has the best {selection.tie_breaker_metric} among {qualifying}"
                      if len(qualifying) > 1 else ""))
     else:
         selected = baseline
@@ -138,7 +138,7 @@ def evaluate_models(data: TrainingData, config: ExperimentConfig) -> Evaluation:
         train_features, train_target = data.features.iloc[split.train], data.target.iloc[split.train]
         train_groups = data.groups.iloc[split.train]
         test_features, test_target = data.features.iloc[split.test], data.target.iloc[split.test]
-        for model_name in config.section("models"):
+        for model_name in config.models:
             pipeline = fit_model(model_name, config, train_features, train_target, train_groups, split.seed)
             predictions = predict_values(pipeline, test_features, config)
             fold_records.append({"model": model_name, "repeat": split.repeat, "fold": split.fold,
@@ -154,11 +154,13 @@ def evaluate_models(data: TrainingData, config: ExperimentConfig) -> Evaluation:
 
 
 def region_labels(data: TrainingData, config: ExperimentConfig) -> pd.Series:
-    regions = config.values.get("evaluation", {})
+    regions = config.evaluation
+    if regions is None:
+        return pd.Series("all", index=data.rows.index)
     parts = [data.rows[column].round(decimals).map(lambda value, name=column: f"{name}={value:g}")
-             for column, decimals in regions.get("region_round", {}).items()]
+             for column, decimals in regions.region_round.items()]
     parts += [data.rows[column].astype(str).map(lambda value, name=column: f"{name}={value}")
-              for column in regions.get("region_columns", [])]
+              for column in regions.region_columns]
     if not parts:
         return pd.Series("all", index=data.rows.index)
     return pd.concat(parts, axis=1).agg(", ".join, axis=1)
@@ -171,4 +173,4 @@ def absolute_error_by_region(evaluation: Evaluation, data: TrainingData, config:
     predictions["absolute_error"] = (predictions["prediction"] - data.target.to_numpy()[rows]).abs()
     table = predictions.pivot_table(index="region", columns="model", values="absolute_error", aggfunc="mean")
     table.insert(0, "rows", predictions.groupby("region")["row"].nunique())
-    return table[["rows", *config.section("models")]]
+    return table[["rows", *config.models]]
