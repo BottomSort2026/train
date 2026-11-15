@@ -137,8 +137,20 @@ selection:
     - {name: engineering-docs, action: include, doc_type: engineering,  ingest_stage: 2, ext: .pdf,
        folder: Engineering Documents, max_fire_relevance: 1}
 
-  # Freno de emergencia: rutas de PSI (remote_path) o ids de recursos externos que meten ruido.
-  exclude: []
+  # Freno de emergencia: rutas de PSI (remote_path, exactas) o ids de recursos externos que meten ruido.
+  exclude:
+    # 2026-11-15: PSI los lista pero no se pueden descargar (fetch falla siempre). Archivos legacy cuya URL firmada
+    # apunta a un objeto que no existe en S3 (NoSuchKey); el de PSI-21 lo rechaza la API ("Invalid Id").
+    - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE Obj, Dev, and Status.pdf"
+    - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_45 I Con of Env Sys presentation.pdf"
+    - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_46th I Con of Env Sys paper.pdf"
+    - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_46th I Con of Env Sys presentation.pdf"
+    - "/Home/psi-data/PSI-99/Raw Data/SAFFIRE_47th I Con of Env Sys presentation.pdf"
+    - "/Home/psi-data/PSI-26/Raw Data/SPICE Final Report 12_2_2012.pdf"
+    - "/Home/psi-data/PSI-26/Raw Data/Ferkul-BASS Report 2013.pdf"
+    - "/Home/psi-data/PSI-26/Reports/PSI-26_Reports_SPICE_FinalReport.pdf"
+    - "/Home/psi-data/PSI-26/Reports/PSI-26_Reports_BASS_FinalReport.pdf"
+    - "/Home/psi-data/PSI-21/Raw Data/2017 Giassi & Long Demosaicing algorithms for the improvement of spatial resolution and accuracy ....pdf"
 
 # --- Conversión de cada formato a texto. ---
 extraction:

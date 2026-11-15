@@ -1,3 +1,6 @@
+"""Fits the k-NN support index (one per fuel) at export time. Querying it (query_support, confidence_level)
+lives in inference.py, which engine copies verbatim."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -39,33 +42,3 @@ def fit_support(features: pd.DataFrame, support: Support) -> dict[str, Any]:
 
 def support_thresholds(bundle: dict[str, Any]) -> dict[str, float]:
     return {name: partition["threshold"] for name, partition in bundle["partitions"].items()}
-
-
-def query_support(bundle: dict[str, Any], feature_row: pd.DataFrame) -> dict[str, Any]:
-    partition_value = str(feature_row[bundle["partition_column"]].iloc[0])
-    if partition_value not in bundle["partitions"]:
-        raise ValueError(f"No support data for {bundle['partition_column']}={partition_value!r}")
-    partition = bundle["partitions"][partition_value]
-    scaled = partition["scaler"].transform(feature_row[bundle["columns"]].to_numpy(dtype=float))
-    neighbors = partition["neighbors"]
-    distances, positions = neighbors.kneighbors(scaled, n_neighbors=min(bundle["nearest_k"],
-                                                                        neighbors.n_samples_fit_))
-    within_threshold = neighbors.radius_neighbors(scaled, radius=partition["threshold"], return_distance=False)[0]
-    return {
-        "within_joint_range": bool(distances[0, 0] <= partition["threshold"]),
-        "support_n": int(len(within_threshold)),
-        "nearest_reference_rows": [int(row) for row in partition["reference_rows"][positions[0]]],
-        "nearest_distances": [float(distance) for distance in distances[0]],
-        "threshold": partition["threshold"],
-    }
-
-
-def confidence_level(in_tested_range: bool, support_n: int, top_probability: float | None,
-                     rule: dict[str, Any]) -> str:
-    if not in_tested_range or support_n < rule["low_confidence_below_support"]:
-        return "low"
-    enough_support = support_n >= rule["high_confidence_min_support"]
-    min_probability = rule.get("high_confidence_min_probability")
-    confident_prediction = (min_probability is None or
-                            (top_probability is not None and top_probability >= min_probability))
-    return "high" if enough_support and confident_prediction else "medium"

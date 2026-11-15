@@ -44,7 +44,11 @@ python -m pytest tests/train                          # unit tests; integration 
 ```
 
 Each artifact folder (`model.joblib`, `support.joblib`, `support_reference.csv`, `model_info.json`) is what the
-engine service loads. `model_info.json` records the library versions engine must match.
+engine service loads: copy both folders into `engine/models/` (committed there, baked into the image).
+`model_info.json` records the library versions engine must match.
+
+- `src/flame/training/inference.py` is copied **verbatim** into the engine service (`app/inference.py`), so it
+  imports only the standard library, joblib, numpy and pandas (a test enforces it).
 
 ## Corpus (`corpus.db`)
 

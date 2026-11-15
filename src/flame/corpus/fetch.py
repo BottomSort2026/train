@@ -33,7 +33,7 @@ def _fetch(doc: dict) -> tuple[str, str]:
 def run() -> None:
     docs = [d for d in read_jsonl(documents_path()) if d["local_path"]]
     print(f"  {len(docs)} archivos por descargar o verificar")
-    failures: list[str] = []
+    failures: list[tuple[dict, Exception]] = []
     done = cached = 0
     with ThreadPoolExecutor(max_workers=_s.network.concurrency) as pool:
         futures = {pool.submit(_fetch, d): d for d in docs}
@@ -44,11 +44,17 @@ def run() -> None:
                 cached += status == "caché"
                 done += 1
             except Exception as e:
-                failures.append(f"{doc['doc_id']} ({doc['title'][:60]}): {e}")
+                failures.append((doc, e))
             if i % 25 == 0 or i == len(docs):
                 print(f"  {i}/{len(docs)} procesados ({cached} en caché, {len(failures)} errores)")
     if failures:
-        for f in failures[:10]:
-            print(f"  ERROR {f}")
+        failures.sort(key=lambda item: item[0]["doc_id"])
+        for doc, e in failures:
+            print(f"  ERROR {doc['doc_id']} ({doc['title'][:60]}): {e}")
+        # A 404 does not go away on a re-run (the file is gone from PSI): print the exact entries for the
+        # selection.exclude list in corpus.yml.
+        print("  Si un archivo da 404 siempre, agrégalo a selection.exclude en configs/corpus/corpus.yml:")
+        for doc, _ in failures:
+            print(f'    - "{doc.get("remote_path") or doc["doc_id"].removeprefix("ext:")}"')
         raise RuntimeError(f"{len(failures)} descargas fallaron. Vuelve a correr 'fetch': "
                            f"solo se descarga lo que falta.")

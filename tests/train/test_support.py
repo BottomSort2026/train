@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flame.training.support import confidence_level, fit_support, query_support
+from flame.training.inference import confidence_level, query_support
+from flame.training.support import fit_support
 
 RULE = {"low_confidence_below_support": 3, "high_confidence_min_support": 5, "high_confidence_min_probability": 0.7}
 

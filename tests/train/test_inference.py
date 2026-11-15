@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 
 import pytest
 
+from flame.training import inference
 from flame.training.inference import build_feature_row, reference_predict, validate_inputs
 
 RESPONSE_FIELDS = ["outcome", "probabilities", "in_tested_range", "out_of_range_fields", "support_n", "nearest_tests",
@@ -132,3 +135,15 @@ def test_suppressant_fraction_is_checked_against_the_range_of_its_own_suppressan
     inputs = {**typical_inputs, "suppressant": "co2", "suppressant_fraction": helium_max}
     assert validate_inputs(info, inputs) == ["suppressant_fraction"]
     assert validate_inputs(info, {**inputs, "suppressant": "he"}) == []
+
+
+def test_module_is_self_contained_so_engine_can_copy_it_verbatim():
+    allowed = {"__future__", "json", "math", "pathlib", "typing", "joblib", "numpy", "pandas"}
+    tree = ast.parse(Path(inference.__file__).read_text(encoding="utf-8"))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add((node.module or "").split(".")[0])
+    assert imported <= allowed, f"engine cannot import {sorted(imported - allowed)}"
