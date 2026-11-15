@@ -193,7 +193,7 @@ def section_training_sets(df: pd.DataFrame) -> str:
 
 def run_check(report: Path = REPORT) -> Path:
     df = flex_data.load_flex()
-    manifest = json.loads(flex_data.MANIFEST.read_text())
+    manifest = json.loads(flex_data.MANIFEST.read_text(encoding="utf-8"))
     raw = flex_data.read_raw_table()
     sheets = flex_data.read_testsheets()
     parts = [
@@ -211,5 +211,5 @@ def run_check(report: Path = REPORT) -> Path:
         section_training_sets(df),
     ]
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text("\n\n".join(parts) + "\n")
+    report.write_text("\n\n".join(parts) + "\n", encoding="utf-8", newline="\n")
     return report

@@ -108,5 +108,5 @@ def compare_targets(config: ExperimentConfig, reports_root: Path = REPORTS_ROOT)
     result = compare_targets_from_data(config, reference_data, sensitivity_data)
     path = reports_root / f"{config.reference.name}_target_sensitivity.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(sensitivity_report(config, result))
+    path.write_text(sensitivity_report(config, result), encoding="utf-8", newline="\n")
     return {**result, "report": path}

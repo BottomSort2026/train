@@ -18,7 +18,7 @@ DECISION_LOG = "reports/decision_log.md"
 
 def display_path(path: Path) -> str:
     try:
-        return str(path.resolve().relative_to(TRAIN_ROOT))
+        return path.resolve().relative_to(TRAIN_ROOT).as_posix()
     except ValueError:
         return path.name
 
@@ -153,7 +153,7 @@ def write_evaluation_report(config: ExperimentConfig, data: TrainingData, evalua
                             reports_root: Path) -> Path:
     path = reports_root / f"{config.name}_evaluation.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(evaluation_report(config, data, evaluation))
+    path.write_text(evaluation_report(config, data, evaluation), encoding="utf-8", newline="\n")
     return path
 
 

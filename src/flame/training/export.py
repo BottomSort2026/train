@@ -252,7 +252,7 @@ def write_artifact(artifact_dir: Path, pipeline: Any, support_bundle: dict[str, 
     joblib.dump(pipeline, artifact_dir / MODEL_FILE)
     joblib.dump(support_bundle, artifact_dir / SUPPORT_FILE)
     reference.to_csv(artifact_dir / REFERENCE_FILE, index=False, lineterminator="\n")
-    (artifact_dir / INFO_FILE).write_text(json.dumps(info, indent=2) + "\n")
+    (artifact_dir / INFO_FILE).write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def run_reference_queries(bundle: dict[str, Any], config: ExperimentConfig) -> list[dict[str, Any]]:
@@ -276,7 +276,8 @@ def export_from_data(config: ExperimentConfig, data: TrainingData, source_table:
     bundle = load_bundle(artifact_dir)
     reference_results = run_reference_queries(bundle, config)
     card_path = reports_root / f"{config.model_version}_model_card.md"
-    card_path.write_text(model_card(config, data, evaluation, info, reference_results, source_table))
+    card_path.write_text(model_card(config, data, evaluation, info, reference_results, source_table),
+                         encoding="utf-8", newline="\n")
     return {"artifact_dir": artifact_dir, "model_card": card_path, "evaluation_report": evaluation_path,
             "selected": selected, "info": info, "reference_results": reference_results}
 

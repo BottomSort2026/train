@@ -25,7 +25,7 @@ def load_bundle(artifact_dir: str | Path) -> dict[str, Any]:
         "model": joblib.load(directory / MODEL_FILE),
         "support": joblib.load(directory / SUPPORT_FILE),
         "reference": pd.read_csv(directory / REFERENCE_FILE, dtype={"testsheet_id": "string"}),
-        "info": json.loads((directory / INFO_FILE).read_text()),
+        "info": json.loads((directory / INFO_FILE).read_text(encoding="utf-8")),
     }
 
 

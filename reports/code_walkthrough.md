@@ -88,6 +88,7 @@ All modules are in `src/flame/training/`.
 | Function | Input | Output |
 |---|---|---|
 | `download_raw(force)` | — | Writes the table and the TestSheets to `data/raw/PSI-69/` |
+| `current_file_names(versions)` | PSI version history | Names of the files in the last version; a rename keeps the folder (T-19) |
 | `read_raw_table(path)` | Raw CSV | The table as text, columns renamed |
 | `read_testsheets(directory)` | TestSheet folder | One row per sheet: IDs, fiber flag, temperature, comment |
 | `clean_flex(table, sheets)` | Both raw frames | The clean table and the list of changes made |
@@ -110,7 +111,7 @@ Only its comments were removed (T-01).
 
 | Function | Input | Output |
 |---|---|---|
-| `load_config(path)` | TOML path, relative to `train/` | `ExperimentConfig` (path, sha256 of the file, values, reference config) |
+| `load_config(path)` | TOML path, relative to `train/` | `ExperimentConfig` (path, sha256 of the file with `\n` line endings, values, reference config) |
 | `validate_config(values)` | Parsed values | Raises `ValueError` for a missing section, an unknown role or task, no single baseline, a calibrated model without `[calibration]`, a classification without exactly two classes, a regression without `target.output` and `cv.stratify_bins` |
 | `resolve_path(relative)` | Path | Absolute path under `train/` |
 
@@ -119,7 +120,7 @@ Only its comments were removed (T-01).
 
 Why: a config with `[comparison].reference_config` inherits the reference sections and overrides keys one
 level deep (T-02), so the sensitivity target cannot drift from the reference models and filters. The sha256
-of the file is written to every report and to `model_info.json`.
+of the file, with `\n` line endings (T-18), is written to every report and to `model_info.json`.
 
 Tests: `tests/training/test_config.py`.
 
@@ -306,16 +307,17 @@ configs (fewer repeats and boosting iterations); they need neither the network n
 
 | File | What it protects |
 |---|---|
-| `test_config.py` | Config loading, inheritance of the sensitivity config, validation errors |
+| `test_config.py` | Config loading, inheritance of the sensitivity config, validation errors, hash independent of line endings |
 | `test_datasets.py` | Ordered exclusion counts, class map, feature types, alignment, subset for option B |
 | `test_splits.py` | No group shared between folds, nor between fit and calibration; reproducible splits |
 | `test_selection.py` | Selection rule edge cases (ties, one metric only, two winners), metrics by hand |
 | `test_support.py` | Threshold, `support_n`, nearest tests, joint range, confidence boundaries |
 | `test_inference.py` | Response fields and types, suppressant mapping, fiber never exposed, invalid requests |
-| `test_export.py` | Artifact files, `model_info.json`, outward rounding, isolated load, determinism |
+| `test_export.py` | Artifact files, `model_info.json`, outward rounding, isolated load, determinism, UTF-8 files with `\n` line endings, `/` in report paths |
 | `test_sensitivity.py` | Row mapping, Spearman, mechanical verdict |
 | `test_regression.py` | Regression path: rows, strata, metrics, clipping, response, `model_info.json` |
-| `test_flex_integration.py` | Row counts of D-03, D-02 and D-08, real group separation, the three smoke tests |
+| `test_flex_data.py` | Current PSI file list: renames and version order |
+| `test_flex_integration.py` | Row counts of D-03, D-02 and D-08, real group separation, the three smoke tests, data check report in UTF-8 |
 
 ## 6. Decision to code matrix
 
@@ -345,6 +347,8 @@ configs (fewer repeats and boosting iterations); they need neither the network n
 | T-15 deterministic reports | `reporting.py`; `export.run_reference_queries` |
 | T-16 regression details | `splits.stratification_labels`; `models.predict_values`; `support.confidence_level` |
 | T-17 test setup | `tests/training/conftest.py` |
+| T-18 same files on any machine | `config.load_config`; `reporting.display_path`; every `write_text` and every JSON `read_text` |
+| T-19 PSI renames | `flex_data.current_file_names`, `_rename` |
 
 ## 7. Reproduce everything from scratch
 

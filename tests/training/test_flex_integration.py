@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from flame.training import flex_data
+from flame.training import flex_check, flex_data
 from flame.training.config import load_config
 from flame.training.datasets import load_training_data
 from flame.training.evaluate import evaluation_splits
@@ -97,5 +97,11 @@ def test_published_artifact_was_trained_on_the_current_data():
     info_path = ARTIFACTS_ROOT / "flex-outcome-0.1" / "model_info.json"
     if not info_path.exists():
         pytest.skip("artifacts/models/flex-outcome-0.1 has not been exported")
-    manifest = json.loads(flex_data.MANIFEST.read_text())
-    assert json.loads(info_path.read_text())["training_source"]["sha256"] == manifest["sha256"]
+    manifest = json.loads(flex_data.MANIFEST.read_text(encoding="utf-8"))
+    assert json.loads(info_path.read_text(encoding="utf-8"))["training_source"]["sha256"] == manifest["sha256"]
+
+
+def test_data_check_report_is_utf8_with_unix_line_endings(tmp_path):
+    text = flex_check.run_check(tmp_path / "flex_data_check.md").read_bytes().decode("utf-8")
+    assert "\r" not in text
+    assert "≈0.7 atm" in text

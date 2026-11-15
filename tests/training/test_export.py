@@ -8,7 +8,7 @@ import pytest
 
 from flame.training.evaluate import evaluate_models
 from flame.training.export import export_from_data, round_outward
-from flame.training.reporting import evaluation_report
+from flame.training.reporting import display_path, evaluation_report
 
 INFO_FIELDS = ["model_version", "task", "algorithm", "class_labels", "positive_class", "decision_threshold", "inputs",
                "input_mapping", "constraints", "fixed_inputs", "feature_columns", "feature_dtypes", "outputs",
@@ -19,7 +19,7 @@ LOAD_WITHOUT_TRAINING_CODE = """
 import json, sys
 import joblib
 import pandas as pd
-info = json.load(open("model_info.json"))
+info = json.load(open("model_info.json", encoding="utf-8"))
 model = joblib.load("model.joblib")
 support = joblib.load("support.joblib")
 row = pd.DataFrame([{"fuel": "methanol", "pressure_atm": 1.0, "o2": 0.21, "co2": 0.0, "he": 0.0, "d0_mm": 3.0,
@@ -52,7 +52,7 @@ def test_artifact_directory_has_every_file(synthetic_export):
 
 
 def test_model_info_has_the_required_fields(synthetic_export):
-    info = json.loads((synthetic_export["artifact_dir"] / "model_info.json").read_text())
+    info = json.loads((synthetic_export["artifact_dir"] / "model_info.json").read_text(encoding="utf-8"))
     assert list(info) == INFO_FIELDS
     assert info["algorithm"]["name"] == synthetic_export["selected"]
     assert info["cv"]["baseline"] == "logreg"
@@ -97,12 +97,24 @@ def test_artifact_loads_in_a_clean_interpreter_without_the_training_code(synthet
 
 
 def test_reports_are_written_next_to_the_artifact(synthetic_export):
-    card = synthetic_export["model_card"].read_text()
-    evaluation = synthetic_export["evaluation_report"].read_text()
+    card = synthetic_export["model_card"].read_text(encoding="utf-8")
+    evaluation = synthetic_export["evaluation_report"].read_text(encoding="utf-8")
     assert synthetic_export["model_card"].name == "flex-outcome-0.1_model_card.md"
     assert synthetic_export["evaluation_report"].name == "flex-outcome_evaluation.md"
     assert "## Limitations" in card and "## Reference queries" in card and "## Reproducibility" in card
     assert "## Paired comparison with the baseline" in evaluation
+
+
+def test_reports_and_model_info_are_utf8_with_unix_line_endings(synthetic_export):
+    paths = [synthetic_export["model_card"], synthetic_export["evaluation_report"],
+             synthetic_export["artifact_dir"] / "model_info.json"]
+    texts = [path.read_bytes().decode("utf-8") for path in paths]
+    assert not any("\r" in text for text in texts)
+    assert "mean ± std" in texts[1]
+
+
+def test_report_paths_use_forward_slashes(outcome_config):
+    assert display_path(outcome_config.path) == "configs/training/flex_outcome.toml"
 
 
 def test_sensitivity_config_is_never_exported(synthetic_table, synthetic_data, sensitivity_config, tmp_path):

@@ -106,7 +106,7 @@ def validate_config(values: dict[str, Any]) -> None:
 
 def load_config(path: str | Path) -> ExperimentConfig:
     config_path = resolve_path(path)
-    content = config_path.read_bytes()
+    content = config_path.read_bytes().replace(b"\r\n", b"\n")
     values = tomllib.loads(content.decode("utf-8"))
     reference = None
     reference_path = values.get("comparison", {}).get("reference_config")

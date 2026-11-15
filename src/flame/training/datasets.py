@@ -103,7 +103,7 @@ def build_training_data(table: pd.DataFrame, config: ExperimentConfig, source_sh
 def load_source_table(config: ExperimentConfig) -> tuple[pd.DataFrame, str]:
     path = resolve_path(config.section("dataset")["path"])
     table = flex_data.load_flex(path, verify=True)
-    manifest = json.loads(path.with_suffix(".json").read_text())
+    manifest = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     return table, manifest["sha256"]
 
 

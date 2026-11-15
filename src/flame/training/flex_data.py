@@ -6,7 +6,7 @@ import re
 import urllib.parse
 import urllib.request
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 import pandas as pd
@@ -78,15 +78,29 @@ def _download_file(file_name: str, dest: Path, attempts: int = 4) -> None:
                 raise
 
 
-def _current_files() -> list[str]:
-    versions = json.loads(_psi_get(f"{PSI_API}/repo/investigations/{ACCESSION}/versions"))["versions"]
+def _rename(current: dict[str, str], old_name: str, new_name: str) -> None:
+    matches = [path for path, name in current.items() if name == old_name]
+    for path in matches:
+        del current[path]
+        current[str(PurePosixPath(path).with_name(new_name))] = new_name
+
+
+def current_file_names(versions: list[dict]) -> list[str]:
     current: dict[str, str] = {}
     for version in sorted(versions, key=lambda v: v["version"]):
         for f in version.get("added", []) + version.get("modified", []):
-            current[f["remote_path"]] = f["file_name"]
+            if "remote_path" in f:
+                current[f["remote_path"]] = f["file_name"]
+            else:
+                _rename(current, f["file_name"], f["new_file_name"])
         for f in version.get("removed", []):
             current.pop(f["remote_path"], None)
     return sorted(current.values())
+
+
+def _current_files() -> list[str]:
+    versions = json.loads(_psi_get(f"{PSI_API}/repo/investigations/{ACCESSION}/versions"))["versions"]
+    return current_file_names(versions)
 
 
 def download_raw(force: bool = False) -> None:
@@ -270,13 +284,13 @@ def prepare_flex() -> dict:
         "pandas_version": pd.__version__,
         "cleaning_log": log,
     }
-    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n")
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     return manifest
 
 
 def load_flex(path: Path = PROCESSED_CSV, verify: bool = True) -> pd.DataFrame:
     if verify:
-        expected = json.loads(path.with_suffix(".json").read_text())["sha256"]
+        expected = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))["sha256"]
         if sha256(path) != expected:
             raise ValueError(f"{path.name} does not match the hash in its manifest. Re-run prepare-flex.")
     return pd.read_csv(path, dtype={"testsheet_id": "string", "duplicate_of": "Int64"})

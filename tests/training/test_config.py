@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 
 import pytest
 
@@ -60,3 +61,12 @@ def test_calibrated_model_needs_calibration_settings(outcome_config):
     del values["calibration"]
     with pytest.raises(ValueError, match="calibration"):
         validate_config(values)
+
+
+def test_config_hash_and_values_ignore_line_endings(outcome_config, tmp_path):
+    content = outcome_config.path.read_bytes().replace(b"\r\n", b"\n")
+    (tmp_path / "lf.toml").write_bytes(content)
+    (tmp_path / "crlf.toml").write_bytes(content.replace(b"\n", b"\r\n"))
+    lf, crlf = load_config(tmp_path / "lf.toml"), load_config(tmp_path / "crlf.toml")
+    assert crlf.sha256 == lf.sha256 == outcome_config.sha256 == hashlib.sha256(content).hexdigest()
+    assert crlf.values == lf.values

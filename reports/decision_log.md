@@ -366,6 +366,32 @@ Source reports:
 | Affected files | `tests/training/conftest.py`. |
 | How to revert | Add packaging metadata and remove the path insertion. |
 
+### T-18 Generated files are the same on Windows and macOS
+
+| Field | Content |
+|---|---|
+| Date | 2026-11-14 |
+| Status | TECHNICAL |
+| Decision | Every text file the training code writes (reports, `model_info.json`, the FLEX manifest) is UTF-8 with `\n` line endings, and every JSON file it reads is read as UTF-8. The config is read with `\r\n` replaced by `\n`, so its sha256 and its parsed values do not depend on the checkout. Paths in reports use `/`. |
+| Options considered | A `.gitattributes` with `eol=lf`, a file shared with the corpus pipeline; keeping the defaults of each platform. |
+| Reason | On Windows the default encoding is cp1252, which has no `≈` or `≥`: `check-flex` failed, and the other reports were written in cp1252. A Windows checkout has `\r\n` line endings, which changed the config sha256, and report paths had `\`. T-15 needs two runs to give identical files, on any machine. |
+| Evidence | `tests/training/test_config.py::test_config_hash_and_values_ignore_line_endings`; `tests/training/test_export.py::test_reports_and_model_info_are_utf8_with_unix_line_endings` and `::test_report_paths_use_forward_slashes`; `tests/training/test_flex_integration.py::test_data_check_report_is_utf8_with_unix_line_endings`. Not run yet: the Windows machine where the change was made has no Python. With `\r\n` replaced, the three configs give the sha256 values printed in the committed reports (checked on that machine). |
+| Affected files | In `src/flame/training/`: `config.py` (`load_config`), `reporting.py` (`display_path`, `write_evaluation_report`), `export.py` (`write_artifact`, `export_from_data`), `sensitivity.py` (`compare_targets`), `flex_check.py` (`run_check`), `flex_data.py` (`prepare_flex`, `load_flex`), `datasets.py` (`load_source_table`), `inference.py` (`load_bundle`). |
+| How to revert | Remove the `encoding` and `newline` arguments, the `replace` call in `load_config` and `as_posix()` in `display_path`. |
+
+### T-19 Renamed files in the PSI version history
+
+| Field | Content |
+|---|---|
+| Date | 2026-11-14 |
+| Status | TECHNICAL |
+| Decision | `current_file_names` applies the PSI versions in order. An entry without `remote_path` is a rename from `file_name` to `new_file_name`: the file keeps its folder and takes the new name. Any other entry without `remote_path` still raises `KeyError`. |
+| Options considered | Keeping the old path with the new name; dropping the file until a later version lists it with its path. |
+| Reason | Version 2 of PSI-25 (BASS-II) has such an entry, and `_current_files` raised `KeyError` on it. Version 3 lists the renamed file in the same folder, so with this rule it is listed once. PSI-69 has no rename, so the FLEX download does not change. |
+| Evidence | `tests/training/test_flex_data.py`, not run yet (T-18). A PowerShell port of the rule, run on the real version histories, keeps the new PSI-25 name once and drops the old one, and still selects 272 TestSheets for PSI-69. |
+| Affected files | `src/flame/training/flex_data.py` (`current_file_names`, `_rename`, `_current_files`). |
+| How to revert | Put the loop back in `_current_files` without the rename branch. |
+
 ## Results of D-08
 
 `flex-extinction` 0.2 was built after `flex-outcome` 0.1 passed its verification. All figures come from the
