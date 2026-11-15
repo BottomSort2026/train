@@ -6,6 +6,7 @@ Both sides must use the same model, revision, normalization, max length and pref
 library versions. `check_compatible` compares a configuration against the one stored in corpus.db.
 """
 from dataclasses import asdict, dataclass
+from pathlib import PurePath
 
 import numpy as np
 
@@ -58,7 +59,22 @@ class Embedder:
 
     @property
     def resolved_revision(self) -> str | None:
-        """Commit hash actually loaded from Hugging Face (use it to pin `revision`)."""
+        """Commit hash of the model version actually loaded (use it to pin `revision`).
+
+        Read from the local Hugging Face cache (works offline): a cached file lives in
+        .../models--<org>--<name>/snapshots/<commit hash>/. Falls back to the transformers config attribute,
+        which older library versions filled in.
+        """
+        try:
+            from huggingface_hub import try_to_load_from_cache
+
+            cached = try_to_load_from_cache(self.config.model_id, "config.json", revision=self.config.revision)
+            if isinstance(cached, str):
+                parts = PurePath(cached).parts
+                if "snapshots" in parts:
+                    return parts[parts.index("snapshots") + 1]
+        except Exception:
+            pass
         try:
             return getattr(self.model[0].auto_model.config, "_commit_hash", None)
         except Exception:

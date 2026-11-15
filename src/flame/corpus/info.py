@@ -26,7 +26,17 @@ def run() -> None:
 
     print("  Versiones instaladas (engine debe usar las mismas para torch y sentence-transformers):")
     for pkg in _PACKAGES:
-        try:
-            print(f"    {pkg:22} {metadata.version(pkg)}")
-        except metadata.PackageNotFoundError:
-            print(f"    {pkg:22} (no instalado)")
+        print(f"    {pkg:22} {_version(pkg)}")
+
+
+def _version(pkg: str) -> str:
+    try:
+        return metadata.version(pkg)
+    except metadata.PackageNotFoundError:
+        pass
+    # some conda-forge builds register a different distribution name (e.g. PyMuPDF): ask the module itself
+    module = {"pymupdf": "pymupdf", "sentence-transformers": "sentence_transformers"}.get(pkg, pkg.replace("-", "_"))
+    try:
+        return str(getattr(__import__(module), "__version__", "instalado (versión desconocida)"))
+    except ImportError:
+        return "(no instalado)"

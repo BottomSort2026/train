@@ -66,7 +66,8 @@ def card_text(accession: str) -> str:
     head = f"{meta.get('title', accession)}" + (f" ({acronym})" if acronym else "")
     parts = [f"PSI investigation {accession}: {head}"]
     for label, key in _CARD_FIELDS:
-        value = _plain(meta.get(key))
+        # some investigations put their reference list inside a field (e.g. PSI-21 "hypothesis")
+        value = _plain(drop_citations(meta.get(key) or ""))
         if value:
             parts.append(f"{label}: {value}")
     # Investigators and publications are deliberately NOT part of the searchable card: as fragments, those lists
@@ -114,7 +115,25 @@ _REFERENCES_HEADING = re.compile(
     r"selected publications|publications)\s*:?$", re.I)
 _CITATION_MARKERS = re.compile(
     r"\bdoi\b|doi\.org|\bvol\.|\bpp\.|\bproceedings\b|\bjournal\b|\bet al\.|\(\d{4}\)|\b(?:19|20)\d{2}[a-z]?[.;,)]|"
-    r"\bAIAA\b|NASA/(?:TM|CR|TP)|\bISBN\b|\bISSN\b|combust\.|\bsymp(?:osium)?\b", re.I)
+    r"\bAIAA\b|NASA/(?:TM|CR|TP)|\bISBN\b|\bISSN\b|combust\.|\bsymp(?:osium)?\b|"
+    r"\bp\.\s?\d+|\b\d+\s?\(\d+(?:/\d+)?\)|https?://", re.I)  # page "p. 593", volume(issue) "8(3)", URL
+# Start of a numbered list item ("1) ", "[2] ", "3. "): reference lists inside PSI metadata fields wrap each
+# reference over several lines, so they are evaluated item by item, not line by line.
+_LIST_ITEM = re.compile(r"\n\s*(?=(?:\d{1,2}\)|\[\d{1,2}\]|\d{1,2}\.)\s)")
+
+
+def drop_citations(text: str) -> str:
+    """Remove bibliographic references embedded in a free-text field (e.g. a numbered publication list)."""
+    kept_paragraphs = []
+    for paragraph in re.split(r"\n\s*\n", text):  # evaluate each paragraph separately, then each list item
+        kept = []
+        for piece in _LIST_ITEM.split(paragraph):
+            flat = re.sub(r"\s+", " ", piece).strip()
+            if flat and not is_citation_paragraph(flat):
+                kept.append(piece.strip())
+        if kept:
+            kept_paragraphs.append("\n".join(kept))
+    return "\n\n".join(kept_paragraphs)
 
 
 def is_citation_paragraph(paragraph: str) -> bool:
