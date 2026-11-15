@@ -11,7 +11,8 @@ WORSE = {"macro_f1": 0.60, "brier": 0.300}
 
 
 def repeat_metrics(**models: dict) -> pd.DataFrame:
-    models.setdefault("logreg_calibrated", {key: WORSE[key] for key in next(iter(models.values()))})
+    if "logreg_calibrated" not in models:
+        models["logreg_calibrated"] = {key: WORSE[key] for key in next(iter(models.values()))}
     records = []
     for name, metrics in models.items():
         for repeat in range(3):
